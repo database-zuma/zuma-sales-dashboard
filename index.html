@@ -611,7 +611,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.6 · build 2026-04-22</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.7 · build 2026-04-22 · precomputed</span>
   </footer>
 
 </div>
@@ -712,10 +712,10 @@ function setProgress(key, state) {
   loadProgress._subs.forEach(cb => { try { cb(loadProgress); } catch {} });
 }
 
+// Single pre-aggregated endpoint call. Returns a payload dict, not raw rows:
+//   { kpis, timeSeries, byChannel, byArea, byEntity, byGender, bySeries, byTier, byTipe, bySize, rankByArticle }
 async function loadChannel(channel, from, to) {
-  // in-memory cache first
   if (cache[channel]) return cache[channel];
-  // localStorage cache second
   const lsKey = `${channel}:${from}:${to}`;
   const cached = lsGet(lsKey);
   if (cached) {
@@ -723,57 +723,19 @@ async function loadChannel(channel, from, to) {
     cached._fromCache = true;
     return cached;
   }
-
-  let rows;
-  const errors = [];
-  const trackedFetch = async (path, label) => {
-    const t0 = performance.now();
-    setProgress(label, 'loading');
-    try {
-      const data = await fetchAPI(path);
-      const dt = Math.round((performance.now() - t0) / 100) / 10;
-      setProgress(label, { ok: true, dt });
-      return data;
-    } catch (e) {
-      errors.push(label + ': ' + e.message);
-      setProgress(label, { ok: false, err: e.message });
-      console.warn(label, 'failed:', e.message);
-      return null;
-    }
-  };
+  setProgress(channel, 'loading');
+  const t0 = performance.now();
   try {
-    if (channel === 'consig') {
-      const data = await trackedFetch(`/api/sales/consignment?from=${from}&to=${to}`, 'consig');
-      rows = data ? (data.detail_rows || data.detail || []).map(normalizeConsigRow) : [];
-    } else if (channel === 'global') {
-      const [retail, online, wholesale, consig] = await Promise.all([
-        trackedFetch(`/api/sales/detail?channel=retail&from=${from}&to=${to}`, 'retail'),
-        trackedFetch(`/api/sales/detail?channel=online&from=${from}&to=${to}`, 'online'),
-        trackedFetch(`/api/sales/detail?channel=wholesale&from=${from}&to=${to}`, 'wholesale'),
-        trackedFetch(`/api/sales/consignment?from=${from}&to=${to}`, 'consig'),
-      ]);
-      const consigRows = consig ? (consig.detail_rows || consig.detail || []).map(normalizeConsigRow) : [];
-      rows = [
-        ...(retail||[]).map(r => ({ ...r, channel: 'retail' })),
-        ...(online||[]).map(r => ({ ...r, channel: 'online' })),
-        ...(wholesale||[]).map(r => ({ ...r, channel: 'wholesale' })),
-        ...consigRows,
-      ];
-    } else {
-      const r = await trackedFetch(`/api/sales/detail?channel=${channel}&from=${from}&to=${to}`, channel);
-      rows = (r || []).map(row => ({ ...row, channel }));
-    }
+    const data = await fetchAPI(`/api/sales/dashboard?channel=${channel}&from=${from}&to=${to}`);
+    const dt = Math.round((performance.now() - t0) / 100) / 10;
+    setProgress(channel, { ok: true, dt });
+    cache[channel] = data;
+    lsSet(lsKey, data);
+    return data;
   } catch (e) {
-    console.error('loadChannel error:', e);
+    setProgress(channel, { ok: false, err: e.message });
     throw e;
   }
-  if (errors.length && rows.length === 0) {
-    throw new Error(errors.join(' | '));
-  }
-  if (errors.length) rows._partialErrors = errors;
-  cache[channel] = rows;
-  lsSet(lsKey, rows); // persist for next load
-  return rows;
 }
 
 // ============ UTIL ============
@@ -887,34 +849,31 @@ function aggregate(rows) {
 }
 
 // ============ POPULATE FILTERS ============
-function populateFilters(rows) {
-  const areaSet = new Set(), storeSet = new Set(), seriesSet = new Set(), tierSet = new Set();
-  rows.forEach(r => {
-    const a = getArea(r);
-    const s = getFilterEntityKey(r, state.channel);
-    if (a && a !== '-') areaSet.add(a);
-    if (s && s !== '-') storeSet.add(s);
-    if (r.series) seriesSet.add(String(r.series));
-    if (r.tier) tierSet.add(String(r.tier));
-  });
+// Consumes the pre-aggregated payload to fill the dropdowns.
+function populateFilters(data) {
+  const areas   = (data.byArea   || []).map(x => String(x.name || '')).filter(s => s && s !== '-');
+  const stores  = (data.byEntity || []).map(x => String(x.name || '')).filter(s => s);
+  const series  = (data.bySeries || []).map(x => String(x.name || '')).filter(s => s && s !== '-');
+  const tiers   = (data.byTier   || []).map(x => String(x.name || '')).filter(s => s && s !== '-');
 
   const fill = (id, values, label) => {
     const el = document.getElementById(id);
+    if (!el) return;
     const prev = el.value;
-    el.innerHTML = `<option value="">${label}</option>` + values.sort().map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
-    if (values.includes(prev)) el.value = prev;
+    const unique = Array.from(new Set(values));
+    el.innerHTML = `<option value="">${label}</option>` + unique.sort().map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (unique.includes(prev)) el.value = prev;
   };
 
-  fill('fArea', [...areaSet], 'Semua Area');
-  fill('fStore', [...storeSet], 'Semua ' + filterEntityLabel(state.channel));
-  fill('fSeries', [...seriesSet], 'Semua Series');
-  fill('fTier', [...tierSet].sort((a,b) => {
+  fill('fArea', areas, 'Semua Area');
+  fill('fStore', stores, 'Semua ' + filterEntityLabel(state.channel));
+  fill('fSeries', series, 'Semua Series');
+  fill('fTier', Array.from(new Set(tiers)).sort((a,b) => {
     const na = Number(a), nb = Number(b);
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     return String(a).localeCompare(String(b));
   }), 'Semua Tier');
 
-  // Update entity label next to Store dropdown (never shows "Channel" to avoid confusion with channel picker)
   const storeLabel = document.querySelector('label[for="fStore"]');
   if (storeLabel) storeLabel.textContent = filterEntityLabel(state.channel);
 }
@@ -927,36 +886,44 @@ function escapeHtml(s) {
 let chartTrendInstance = null;
 let chartContribInstance = null;
 
-function renderExecutive(rows) {
-  const agg = aggregate(rows);
+// data is the pre-aggregated payload from /api/sales/dashboard
+function renderExecutive(data) {
+  const kpis = (data && data.kpis) || {};
   const naDash = '—';
+  const revenue = Number(kpis.revenue) || 0;
+  const pairs = Number(kpis.pairs) || 0;
+  const transactions = Number(kpis.transactions) || 0;
+  const hasTxnData = transactions > 0;
+  const upt = hasTxnData ? pairs / transactions : 0;
+  const asp = pairs ? revenue / pairs : 0;
+  const atv = hasTxnData ? revenue / transactions : 0;
 
-  // KPI cards
-  document.getElementById('kpiOmzet').textContent = fmtRpShort(agg.revenue);
-  document.getElementById('kpiOmzetSub').textContent = fmtRp(agg.revenue);
-  document.getElementById('kpiPairs').textContent = fmtNum(agg.pairs);
+  document.getElementById('kpiOmzet').textContent = fmtRpShort(revenue);
+  document.getElementById('kpiOmzetSub').textContent = fmtRp(revenue);
+  document.getElementById('kpiPairs').textContent = fmtNum(pairs);
   document.getElementById('kpiPairsSub').textContent = 'pairs';
-  document.getElementById('kpiTrx').textContent = agg.hasTxnData ? fmtNum(agg.transactions) : naDash;
-  document.getElementById('kpiTrxSub').textContent = agg.hasTxnData ? 'transaksi' : 'data tidak tersedia';
-  document.getElementById('kpiUpt').textContent = agg.hasTxnData ? agg.upt.toFixed(2) : naDash;
-  document.getElementById('kpiAsp').textContent = agg.pairs ? fmtRpShort(agg.asp) : naDash;
-  document.getElementById('kpiAtv').textContent = agg.hasTxnData ? fmtRpShort(agg.atv) : naDash;
+  document.getElementById('kpiTrx').textContent = hasTxnData ? fmtNum(transactions) : naDash;
+  document.getElementById('kpiTrxSub').textContent = hasTxnData ? 'transaksi' : 'retail only';
+  document.getElementById('kpiUpt').textContent = hasTxnData ? upt.toFixed(2) : naDash;
+  document.getElementById('kpiAsp').textContent = pairs ? fmtRpShort(asp) : naDash;
+  document.getElementById('kpiAtv').textContent = hasTxnData ? fmtRpShort(atv) : naDash;
 
-  renderTrendChart(rows);
-  renderContribChart(rows);
-  renderPerformanceTable(rows);
+  renderTrendChart(data.timeSeries || []);
+  renderContribChart(data);
+  renderPerformanceTable(data);
 }
 
-function renderTrendChart(rows) {
-  const byBucket = {};
+function renderTrendChart(timeSeries) {
+  // timeSeries = [{date, revenue, pairs, transactions}, ...]
   const gran = state.trendGranularity;
-  rows.forEach(r => {
-    const d = (r.date || '').slice(0,10);
+  const byBucket = {};
+  (timeSeries || []).forEach(t => {
+    const d = String(t.date || '').slice(0,10);
     if (!d) return;
     const key = gran === 'month' ? d.slice(0,7) : d;
     if (!byBucket[key]) byBucket[key] = { revenue: 0, pairs: 0 };
-    byBucket[key].revenue += Number(r.total)||0;
-    byBucket[key].pairs += Number(r.qty)||0;
+    byBucket[key].revenue += Number(t.revenue) || 0;
+    byBucket[key].pairs += Number(t.pairs) || 0;
   });
   const keys = Object.keys(byBucket).sort();
   const revenues = keys.map(k => byBucket[k].revenue);
@@ -997,38 +964,29 @@ function renderTrendChart(rows) {
   });
 }
 
-function renderContribChart(rows) {
+function renderContribChart(data) {
+  // Pick the right pre-aggregated slice: Global → byChannel, others → byArea
   const channel = state.channel;
-  const groupBy = channel === 'global' ? 'channel' : 'area';
-  const agg = {};
-  rows.forEach(r => {
-    const key = groupBy === 'channel'
-      ? (r.channel || '-').toUpperCase()
-      : getArea(r);
-    if (!agg[key]) agg[key] = { revenue: 0, pairs: 0 };
-    agg[key].revenue += Number(r.total)||0;
-    agg[key].pairs += Number(r.qty)||0;
-  });
-  const sorted = Object.entries(agg)
-    .sort((a,b) => b[1].revenue - a[1].revenue);
-  const total = sorted.reduce((s, [,v]) => s + v.revenue, 0) || 1;
-
-  const labels = sorted.map(([k]) => k);
-  const values = sorted.map(([,v]) => v.revenue);
+  const useChannel = channel === 'global';
+  const source = useChannel ? (data.byChannel || []) : (data.byArea || []);
+  const items = source
+    .map(s => ({ name: String(s.name || '-').toUpperCase(), revenue: Number(s.revenue) || 0 }))
+    .filter(s => s.revenue > 0)
+    .sort((a,b) => b.revenue - a.revenue);
+  const total = items.reduce((s, v) => s + v.revenue, 0) || 1;
   const palette = ['#00E273', '#002A3A', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#10b981', '#f43f5e', '#64748b'];
 
-  const titleMap = { global: 'Contribution by Channel', retail: 'Contribution by Area', online: 'Contribution by Area', consig: 'Contribution by Area', wholesale: 'Contribution by Area' };
-  document.getElementById('contribTitle').textContent = titleMap[channel] || 'Sales Contribution';
+  document.getElementById('contribTitle').textContent = useChannel ? 'Contribution by Channel' : 'Contribution by Area';
 
   const ctx = document.getElementById('chartContrib').getContext('2d');
   if (chartContribInstance) chartContribInstance.destroy();
   chartContribInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels,
+      labels: items.map(i => i.name),
       datasets: [{
-        data: values,
-        backgroundColor: labels.map((_, i) => palette[i % palette.length]),
+        data: items.map(i => i.revenue),
+        backgroundColor: items.map((_, i) => palette[i % palette.length]),
         borderColor: '#fff',
         borderWidth: 2,
       }]
@@ -1048,49 +1006,48 @@ function renderContribChart(rows) {
     }
   });
 
-  // Contribution table
   const html = `<table class="data" style="border-top:1px solid var(--border-soft);">
     <thead><tr>
       <th style="width:12px;"></th>
-      <th>${groupBy === 'channel' ? 'Channel' : 'Area'}</th>
+      <th>${useChannel ? 'Channel' : 'Area'}</th>
       <th class="right">Revenue</th>
       <th class="right">Share</th>
     </tr></thead>
     <tbody>
-      ${sorted.map(([k, v], i) => `
+      ${items.map((it, i) => `
         <tr>
           <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${palette[i%palette.length]};"></span></td>
-          <td class="strong">${escapeHtml(k)}</td>
-          <td class="right">${fmtRpShort(v.revenue)}</td>
-          <td class="right muted">${(v.revenue/total*100).toFixed(1)}%</td>
+          <td class="strong">${escapeHtml(it.name)}</td>
+          <td class="right">${fmtRpShort(it.revenue)}</td>
+          <td class="right muted">${(it.revenue/total*100).toFixed(1)}%</td>
         </tr>`).join('')}
     </tbody>
   </table>`;
   document.getElementById('contribTable').innerHTML = html;
 }
 
-function renderPerformanceTable(rows) {
+function renderPerformanceTable(data) {
+  // For Global: show byChannel (RETAIL/ONLINE/CONSIG/WHOLESALE rows)
+  // For channel-specific: show byEntity (per toko/marketplace/partner/customer)
   const channel = state.channel;
-  const entityKey = (r) => getEntityKey(r, channel);
+  const useChannel = channel === 'global';
+  const source = useChannel ? (data.byChannel || []) : (data.byEntity || []);
 
-  const agg = {};
-  rows.forEach(r => {
-    const k = entityKey(r);
-    if (!agg[k]) agg[k] = { entity: k, area: getArea(r), qty: 0, revenue: 0, trxSet: new Set() };
-    agg[k].qty += Number(r.qty)||0;
-    agg[k].revenue += Number(r.total)||0;
-    if (r.order_no) agg[k].trxSet.add(r.order_no);
-  });
-  const list = Object.values(agg).map(a => ({
-    entity: a.entity,
-    area: a.area,
-    qty: a.qty,
-    revenue: a.revenue,
-    trx: a.trxSet.size,
-    upt: a.trxSet.size ? a.qty / a.trxSet.size : 0,
-    asp: a.qty ? a.revenue / a.qty : 0,
-    atv: a.trxSet.size ? a.revenue / a.trxSet.size : 0,
-  })).sort((a,b) => b.revenue - a.revenue);
+  const list = source.map(s => {
+    const pairs = Number(s.pairs) || 0;
+    const revenue = Number(s.revenue) || 0;
+    const trx = Number(s.transactions) || 0;
+    return {
+      entity: useChannel ? String(s.name || '-').toUpperCase() : String(s.name || '-'),
+      area: useChannel ? '' : (s.area || '-'),
+      qty: pairs,
+      revenue: revenue,
+      trx: trx,
+      upt: trx ? pairs / trx : 0,
+      asp: pairs ? revenue / pairs : 0,
+      atv: trx ? revenue / trx : 0,
+    };
+  }).sort((a,b) => b.revenue - a.revenue);
 
   const label = entityLabel(channel);
   document.getElementById('performanceTitle').textContent = `${label} Performance`;
@@ -1162,8 +1119,8 @@ function renderPerformanceTable(rows) {
     <button id="pgPrev" ${safePage<=1?'disabled':''}>‹ Prev</button>
     <span>Page ${safePage} of ${pages}</span>
     <button id="pgNext" ${safePage>=pages?'disabled':''}>Next ›</button>`;
-  document.getElementById('pgPrev').onclick = () => { state.page = Math.max(1, safePage-1); renderPerformanceTable(rows); };
-  document.getElementById('pgNext').onclick = () => { state.page = Math.min(pages, safePage+1); renderPerformanceTable(rows); };
+  document.getElementById('pgPrev').onclick = () => { state.page = Math.max(1, safePage-1); renderPerformanceTable(data); };
+  document.getElementById('pgNext').onclick = () => { state.page = Math.min(pages, safePage+1); renderPerformanceTable(data); };
 
   // CSV/XLSX export
   document.getElementById('btnCsv').onclick = () => exportCsv(list, label);
@@ -1220,7 +1177,6 @@ function formatProgress(p) {
 
 async function refresh({ reloadData = true } = {}) {
   const btn = document.getElementById('btnRefresh');
-  // progress subscriber updates the status bar as each endpoint resolves
   const progressHandler = (p) => {
     showStatus(`⏳ Memuat (${state.from} → ${state.to})  ·  ${formatProgress(p)}`, 'loading');
   };
@@ -1228,7 +1184,6 @@ async function refresh({ reloadData = true } = {}) {
     btn.disabled = true;
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
-      // reset progress map
       ['retail','online','wholesale','consig'].forEach(k => delete loadProgress[k]);
       loadProgress._subs.add(progressHandler);
 
@@ -1236,27 +1191,21 @@ async function refresh({ reloadData = true } = {}) {
       if (body) body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
       showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
       const t0 = performance.now();
-      const rows = await loadChannel(state.channel, state.from, state.to);
+      const data = await loadChannel(state.channel, state.from, state.to);
       const dt = Math.round((performance.now() - t0) / 100) / 10;
-      state.rawData = rows;
-      populateFilters(rows);
-      if (!rows || rows.length === 0) {
-        showStatus(`⚠️ API OK tapi 0 baris data untuk channel "${state.channel}" di periode ${state.from} → ${state.to}. Coba pilih tanggal lain atau channel lain.`, 'warn');
+      state.rawData = data;
+      populateFilters(data);
+      const totalPairs = Number((data.kpis && data.kpis.pairs) || 0);
+      if (!data || totalPairs === 0) {
+        showStatus(`⚠️ API OK tapi 0 data untuk channel "${state.channel}" di periode ${state.from} → ${state.to}. Coba tanggal/channel lain.`, 'warn');
       } else {
-        const chCount = {};
-        rows.forEach(r => { const c = r.channel || '-'; chCount[c] = (chCount[c]||0)+1; });
-        const summary = Object.entries(chCount).map(([k,v]) => `${k}: ${v.toLocaleString('id-ID')}`).join(' · ');
-        const source = rows._fromCache ? 'dari cache lokal (instant)' : `dari server (${dt}s)`;
-        if (rows._partialErrors && rows._partialErrors.length) {
-          showStatus(`⚠️ ${rows.length.toLocaleString('id-ID')} baris dimuat ${source} (sebagian channel gagal: ${rows._partialErrors.join(' | ')}) — ${summary}`, 'warn');
-        } else {
-          showStatus(`✅ ${rows.length.toLocaleString('id-ID')} baris ${source} — ${summary}`, 'ok');
-          setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
-        }
+        const byChannel = (data.byChannel || []).map(c => `${c.name}: ${fmtNum(c.pairs)}`).join(' · ');
+        const source = data._fromCache ? 'dari cache lokal (instant)' : `dari server (${dt}s)`;
+        showStatus(`✅ ${fmtNum(totalPairs)} pairs ${source} — ${byChannel}`, 'ok');
+        setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
       }
     }
-    const filtered = applyFilters(state.rawData);
-    renderExecutive(filtered);
+    renderExecutive(state.rawData || {});
     state.lastUpdate = new Date();
     document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
   } catch (e) {

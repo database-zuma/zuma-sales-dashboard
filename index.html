@@ -596,7 +596,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · v0.1
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.3 · build 2026-04-22</span>
   </footer>
 
 </div>
@@ -627,11 +627,22 @@ const state = {
 
 const cache = { global: null, retail: null, online: null, consig: null, wholesale: null };
 
-// ============ FETCH ============
-async function fetchAPI(path) {
-  const res = await fetch(API_BASE + path, { headers: { 'X-API-Key': API_KEY } });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+// ============ FETCH (with timeout + clear errors) ============
+async function fetchAPI(path, { timeoutMs = 45000 } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(new Error('TIMEOUT after ' + (timeoutMs/1000) + 's')), timeoutMs);
+  try {
+    const res = await fetch(API_BASE + path, { headers: { 'X-API-Key': API_KEY }, signal: ctl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
+    return res.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Fetch timeout (' + (timeoutMs/1000) + 's) — network/VPS unreachable: ' + path);
+    // TypeError: Failed to fetch = CORS or network
+    if (e instanceof TypeError) throw new Error('Network/CORS error: ' + path + ' — cek koneksi atau firewall');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function normalizeConsigRow(r) {
@@ -656,32 +667,48 @@ function normalizeConsigRow(r) {
 async function loadChannel(channel, from, to) {
   if (cache[channel]) return cache[channel];
   let rows;
+  const errors = [];
+  const trackedFetch = async (path, label) => {
+    try {
+      return await fetchAPI(path);
+    } catch (e) {
+      errors.push(label + ': ' + e.message);
+      console.warn(label, 'failed:', e.message);
+      return null;
+    }
+  };
   try {
     if (channel === 'consig') {
-      const data = await fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`);
-      rows = (data.detail_rows || data.detail || []).map(normalizeConsigRow);
+      const data = await trackedFetch(`/api/sales/consignment?from=${from}&to=${to}`, 'consig');
+      rows = data ? (data.detail_rows || data.detail || []).map(normalizeConsigRow) : [];
     } else if (channel === 'global') {
       const [retail, online, wholesale, consig] = await Promise.all([
-        fetchAPI(`/api/sales/detail?channel=retail&from=${from}&to=${to}`).catch(() => []),
-        fetchAPI(`/api/sales/detail?channel=online&from=${from}&to=${to}`).catch(() => []),
-        fetchAPI(`/api/sales/detail?channel=wholesale&from=${from}&to=${to}`).catch(() => []),
-        fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`).catch(() => ({ detail_rows: [] })),
+        trackedFetch(`/api/sales/detail?channel=retail&from=${from}&to=${to}`, 'retail'),
+        trackedFetch(`/api/sales/detail?channel=online&from=${from}&to=${to}`, 'online'),
+        trackedFetch(`/api/sales/detail?channel=wholesale&from=${from}&to=${to}`, 'wholesale'),
+        trackedFetch(`/api/sales/consignment?from=${from}&to=${to}`, 'consig'),
       ]);
-      const consigRows = (consig.detail_rows || consig.detail || []).map(normalizeConsigRow);
+      const consigRows = consig ? (consig.detail_rows || consig.detail || []).map(normalizeConsigRow) : [];
       rows = [
-        ...retail.map(r => ({ ...r, channel: 'retail' })),
-        ...online.map(r => ({ ...r, channel: 'online' })),
-        ...wholesale.map(r => ({ ...r, channel: 'wholesale' })),
+        ...(retail||[]).map(r => ({ ...r, channel: 'retail' })),
+        ...(online||[]).map(r => ({ ...r, channel: 'online' })),
+        ...(wholesale||[]).map(r => ({ ...r, channel: 'wholesale' })),
         ...consigRows,
       ];
     } else {
-      rows = await fetchAPI(`/api/sales/detail?channel=${channel}&from=${from}&to=${to}`);
-      rows = (rows || []).map(r => ({ ...r, channel }));
+      const r = await trackedFetch(`/api/sales/detail?channel=${channel}&from=${from}&to=${to}`, channel);
+      rows = (r || []).map(row => ({ ...row, channel }));
     }
   } catch (e) {
     console.error('loadChannel error:', e);
     throw e;
   }
+  if (errors.length && rows.length === 0) {
+    // every endpoint failed — surface the first error so user sees WHAT broke
+    throw new Error(errors.join(' | '));
+  }
+  // partial failures: attach meta so UI can warn
+  if (errors.length) rows._partialErrors = errors;
   cache[channel] = rows;
   return rows;
 }
@@ -1134,9 +1161,12 @@ async function refresh({ reloadData = true } = {}) {
         const chCount = {};
         rows.forEach(r => { const c = r.channel || '-'; chCount[c] = (chCount[c]||0)+1; });
         const summary = Object.entries(chCount).map(([k,v]) => `${k}: ${v.toLocaleString('id-ID')}`).join(' · ');
-        showStatus(`✅ ${rows.length.toLocaleString('id-ID')} baris dimuat — ${summary}`, 'ok');
-        // auto-hide on success after 4s
-        setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
+        if (rows._partialErrors && rows._partialErrors.length) {
+          showStatus(`⚠️ ${rows.length.toLocaleString('id-ID')} baris dimuat (sebagian channel gagal: ${rows._partialErrors.join(' | ')}) — ${summary}`, 'warn');
+        } else {
+          showStatus(`✅ ${rows.length.toLocaleString('id-ID')} baris dimuat — ${summary}`, 'ok');
+          setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
+        }
       }
     }
     const filtered = applyFilters(state.rawData);

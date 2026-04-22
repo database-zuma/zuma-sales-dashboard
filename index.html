@@ -538,28 +538,94 @@ table.data tfoot td {
 
   <!-- ========= TAB: OUTLET ========= -->
   <section class="tab-content" id="tab-outlet">
-    <div class="empty">
-      <div class="empty-icon">🏬</div>
-      <div>Outlet detail — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Full outlet/MP/partner/customer breakdown dengan metrik UPT/ASP/ATV per baris.</div>
+    <div class="grid-2-wide">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Outlet Ranking</div>
+          <div style="display:flex;gap:4px;"><button class="btn-ghost" id="btnOutletCsv">CSV</button></div>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="outletTable">
+            <thead><tr id="outletHead"></tr></thead>
+            <tbody id="outletBody"><tr><td colspan="10" class="loading">Pilih channel + periode dulu di Executive.</td></tr></tbody>
+            <tfoot id="outletFoot"></tfoot>
+          </table>
+        </div>
+        <div class="pagination" id="outletPagination"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Distribusi per Area</div></div>
+        <div class="card-body">
+          <div class="chart-box" style="height:200px;"><canvas id="chartOutletArea"></canvas></div>
+          <div id="outletAreaTable" style="margin-top:10px;"></div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- ========= TAB: PRODUK ========= -->
   <section class="tab-content" id="tab-produk">
-    <div class="empty">
-      <div class="empty-icon">👕</div>
-      <div>Produk analysis — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Top SKU, breakdown Gender/Series/Tier/Tipe, size distribution.</div>
+    <div class="grid-2">
+      <div class="card"><div class="card-header"><div class="card-title">Top 20 Artikel</div></div>
+        <div class="table-wrap" style="max-height:380px;overflow:auto;">
+          <table class="data" id="produkTopTable">
+            <thead><tr>
+              <th class="center" style="width:28px;">#</th>
+              <th>Artikel</th>
+              <th class="right">Pairs</th>
+              <th class="right">Revenue</th>
+            </tr></thead>
+            <tbody id="produkTopBody"><tr><td colspan="4" class="loading">—</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">Per Gender</div></div>
+        <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukGender"></canvas></div></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-header"><div class="card-title">Per Series (Top 10)</div></div>
+        <div class="card-body"><div class="chart-box" style="height:220px;"><canvas id="chartProdukSeries"></canvas></div></div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">Per Tier</div></div>
+        <div class="card-body"><div class="chart-box" style="height:220px;"><canvas id="chartProdukTier"></canvas></div></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-header"><div class="card-title">Per Tipe</div></div>
+        <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukTipe"></canvas></div></div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">Distribusi Size</div></div>
+        <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukSize"></canvas></div></div>
+      </div>
     </div>
   </section>
 
   <!-- ========= TAB: TREND ========= -->
   <section class="tab-content" id="tab-trend">
-    <div class="empty">
-      <div class="empty-icon">📈</div>
-      <div>Trend analysis — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Daily / Monthly / YoY comparison.</div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header">
+        <div class="card-title">Revenue & Pairs Over Time</div>
+        <div style="display:flex;gap:4px;">
+          <button class="btn-ghost" id="btnTrendDaily">Daily</button>
+          <button class="btn-ghost" id="btnTrendMonthly">Monthly</button>
+        </div>
+      </div>
+      <div class="card-body"><div class="chart-box" style="height:300px;"><canvas id="chartTrendBig"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Breakdown per Hari/Bulan</div></div>
+      <div class="table-wrap" style="max-height:420px;overflow:auto;">
+        <table class="data" id="trendTable">
+          <thead><tr>
+            <th>Periode</th>
+            <th class="right">Revenue</th>
+            <th class="right">Pairs</th>
+            <th class="right">Txn</th>
+          </tr></thead>
+          <tbody id="trendBody"><tr><td colspan="4" class="loading">—</td></tr></tbody>
+          <tfoot id="trendFoot"></tfoot>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -611,7 +677,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.7 · build 2026-04-22 · precomputed</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.8 · build 2026-04-22 · +Outlet/Produk/Trend</span>
   </footer>
 
 </div>
@@ -1136,11 +1202,233 @@ function exportCsv(list, label, xlsx) {
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const ext = xlsx ? 'csv' : 'csv'; // XLSX as CSV for MVP
+  const ext = xlsx ? 'csv' : 'csv';
   a.href = url;
   a.download = `sales-performance-${state.channel}-${state.from}-${state.to}.${ext}`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ============ RENDER OUTLET ============
+let chartOutletAreaInstance = null;
+const outletState = { page: 1, pageSize: 15 };
+
+function renderOutlet(data) {
+  const entities = (data.byEntity || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
+  const areas = (data.byArea || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
+  const label = state.channel === 'global' ? 'Outlet' : entityLabel(state.channel);
+
+  const head = `
+    <th class="center" style="width:30px;">#</th>
+    <th>${label}</th>
+    <th>Area</th>
+    <th>Channel</th>
+    <th class="right">Pairs</th>
+    <th class="right">Revenue</th>
+    <th class="right">Txn</th>
+    <th class="right">UPT</th>
+    <th class="right">ASP</th>
+    <th class="right">ATV</th>`;
+  document.getElementById('outletHead').innerHTML = head;
+
+  const total = entities.reduce((a, c) => ({
+    pairs: a.pairs + (c.pairs||0), revenue: a.revenue + (c.revenue||0), trx: a.trx + (c.transactions||0)
+  }), { pairs: 0, revenue: 0, trx: 0 });
+
+  if (!entities.length) {
+    document.getElementById('outletBody').innerHTML = `<tr><td colspan="10" class="empty" style="border:none;padding:28px;">Tidak ada data untuk periode ini.</td></tr>`;
+    document.getElementById('outletFoot').innerHTML = '';
+    document.getElementById('outletPagination').innerHTML = '';
+  } else {
+    const size = outletState.pageSize;
+    const pages = Math.max(1, Math.ceil(entities.length / size));
+    const page = Math.min(outletState.page, pages);
+    outletState.page = page;
+    const slice = entities.slice((page-1)*size, page*size);
+    const naDash = '—';
+
+    document.getElementById('outletBody').innerHTML = slice.map((r, i) => {
+      const pairs = Number(r.pairs)||0, rev = Number(r.revenue)||0, trx = Number(r.transactions)||0;
+      const upt = trx ? pairs/trx : 0, asp = pairs ? rev/pairs : 0, atv = trx ? rev/trx : 0;
+      return `<tr>
+        <td class="center muted">${(page-1)*size + i + 1}</td>
+        <td class="strong">${escapeHtml(String(r.name||'-'))}</td>
+        <td class="muted">${escapeHtml(String(r.area||'-'))}</td>
+        <td class="muted">${escapeHtml(String(r.channel||'-').toUpperCase())}</td>
+        <td class="right">${fmtNum(pairs)}</td>
+        <td class="right strong">${fmtRpShort(rev)}</td>
+        <td class="right muted">${trx ? fmtNum(trx) : naDash}</td>
+        <td class="right muted">${trx ? upt.toFixed(1) : naDash}</td>
+        <td class="right muted">${pairs ? fmtRpShort(asp) : naDash}</td>
+        <td class="right muted">${trx ? fmtRpShort(atv) : naDash}</td>
+      </tr>`;
+    }).join('');
+
+    const totUpt = total.trx ? total.pairs/total.trx : 0;
+    const totAsp = total.pairs ? total.revenue/total.pairs : 0;
+    const totAtv = total.trx ? total.revenue/total.trx : 0;
+    document.getElementById('outletFoot').innerHTML = `
+      <tr>
+        <td class="center" colspan="4">TOTAL</td>
+        <td class="right">${fmtNum(total.pairs)}</td>
+        <td class="right">${fmtRpShort(total.revenue)}</td>
+        <td class="right">${total.trx ? fmtNum(total.trx) : naDash}</td>
+        <td class="right">${total.trx ? totUpt.toFixed(1) : naDash}</td>
+        <td class="right">${total.pairs ? fmtRpShort(totAsp) : naDash}</td>
+        <td class="right">${total.trx ? fmtRpShort(totAtv) : naDash}</td>
+      </tr>`;
+
+    document.getElementById('outletPagination').innerHTML = `
+      <button id="outPrev" ${page<=1?'disabled':''}>‹ Prev</button>
+      <span>${entities.length} outlet · Page ${page} of ${pages}</span>
+      <button id="outNext" ${page>=pages?'disabled':''}>Next ›</button>`;
+    document.getElementById('outPrev').onclick = () => { outletState.page = Math.max(1, page-1); renderOutlet(data); };
+    document.getElementById('outNext').onclick = () => { outletState.page = Math.min(pages, page+1); renderOutlet(data); };
+  }
+
+  document.getElementById('btnOutletCsv').onclick = () => {
+    const header = ['#','Name','Area','Channel','Pairs','Revenue','Transactions'];
+    const lines = [header.join(',')];
+    entities.forEach((r, i) => lines.push([i+1, `"${r.name||''}"`, `"${r.area||''}"`, `"${r.channel||''}"`, r.pairs||0, r.revenue||0, r.transactions||0].join(',')));
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `outlet-${state.channel}-${state.from}-${state.to}.csv` });
+    a.click();
+  };
+
+  // Area chart (bar)
+  const palette = ['#00E273','#002A3A','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#10b981','#f43f5e','#64748b','#14b8a6','#eab308','#a855f7'];
+  const ctx = document.getElementById('chartOutletArea').getContext('2d');
+  if (chartOutletAreaInstance) chartOutletAreaInstance.destroy();
+  chartOutletAreaInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: areas.map(a => a.name),
+      datasets: [{ data: areas.map(a => a.revenue), backgroundColor: areas.map((_,i) => palette[i%palette.length]), borderRadius: 3 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: '#002A3A', callbacks: { label: c => fmtRp(c.parsed.x) } } },
+      scales: {
+        x: { grid: { color: '#f1f5f9' }, ticks: { font:{size:10}, color:'#64748b', callback: v => fmtRpShort(v) } },
+        y: { grid: { display: false }, ticks: { font:{size:10}, color:'#64748b' } }
+      }
+    }
+  });
+
+  const totalAreaRev = areas.reduce((s,a) => s + (a.revenue||0), 0) || 1;
+  document.getElementById('outletAreaTable').innerHTML = `<table class="data" style="border-top:1px solid var(--border-soft);">
+    <thead><tr><th>Area</th><th class="right">Revenue</th><th class="right">Share</th></tr></thead>
+    <tbody>${areas.map(a => `<tr><td class="strong">${escapeHtml(a.name)}</td><td class="right">${fmtRpShort(a.revenue)}</td><td class="right muted">${((a.revenue||0)/totalAreaRev*100).toFixed(1)}%</td></tr>`).join('')}</tbody>
+  </table>`;
+}
+
+// ============ RENDER PRODUK ============
+const produkCharts = {};
+function renderProduk(data) {
+  const rank = (data.rankByArticle || []).slice(0, 20);
+  document.getElementById('produkTopBody').innerHTML = rank.length ? rank.map((r,i) => `
+    <tr>
+      <td class="center muted">${i+1}</td>
+      <td>
+        <div class="strong">${escapeHtml(r.product_name || r.kode_besar || '-')}</div>
+        <div class="muted" style="font-size:10px;">${escapeHtml(r.kode_besar||'')} · ${escapeHtml(r.gender||'-')} · ${escapeHtml(r.series||'-')}</div>
+      </td>
+      <td class="right">${fmtNum(r.pairs)}</td>
+      <td class="right strong">${fmtRpShort(r.revenue)}</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="empty" style="border:none;padding:28px;">—</td></tr>`;
+
+  const palette = ['#00E273','#002A3A','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#10b981','#f43f5e','#64748b','#14b8a6','#eab308','#a855f7'];
+  const barOpts = {
+    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#002A3A',
+      callbacks: { label: c => fmtNum(c.parsed.x) + ' pairs' } } },
+    scales: {
+      x: { grid: { color: '#f1f5f9' }, ticks: { font: {size:10}, color: '#64748b' } },
+      y: { grid: { display: false }, ticks: { font: {size:10}, color: '#64748b' } }
+    }
+  };
+  const pieOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'right', labels: { font: {size:10}, boxWidth: 10 } },
+      tooltip: { backgroundColor: '#002A3A',
+        callbacks: { label: c => `${c.label}: ${fmtNum(c.parsed)} pairs` } } }
+  };
+
+  const renderChart = (id, dataArr, opts, type='bar', limit=10) => {
+    const slice = (dataArr || []).slice(0, limit);
+    const ctx = document.getElementById(id).getContext('2d');
+    if (produkCharts[id]) produkCharts[id].destroy();
+    produkCharts[id] = new Chart(ctx, {
+      type,
+      data: {
+        labels: slice.map(x => x.name),
+        datasets: [{ data: slice.map(x => x.pairs),
+          backgroundColor: slice.map((_, i) => palette[i%palette.length]),
+          borderColor: '#fff', borderWidth: type === 'doughnut' ? 2 : 0, borderRadius: 3 }]
+      },
+      options: opts,
+    });
+  };
+  renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12);
+  renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
+  renderChart('chartProdukTier', data.byTier || [], barOpts, 'bar', 10);
+  renderChart('chartProdukTipe', data.byTipe || [], pieOpts, 'doughnut', 10);
+  renderChart('chartProdukSize', data.bySize || [], barOpts, 'bar', 20);
+}
+
+// ============ RENDER TREND ============
+let chartTrendBigInstance = null;
+function renderTrend(data) {
+  const gran = state.trendGranularity || 'day';
+  const byBucket = {};
+  (data.timeSeries || []).forEach(t => {
+    const d = String(t.date || '').slice(0,10);
+    if (!d) return;
+    const key = gran === 'month' ? d.slice(0,7) : d;
+    if (!byBucket[key]) byBucket[key] = { revenue: 0, pairs: 0, transactions: 0 };
+    byBucket[key].revenue += Number(t.revenue) || 0;
+    byBucket[key].pairs += Number(t.pairs) || 0;
+    byBucket[key].transactions += Number(t.transactions) || 0;
+  });
+  const keys = Object.keys(byBucket).sort();
+  const revs = keys.map(k => byBucket[k].revenue);
+  const pairs = keys.map(k => byBucket[k].pairs);
+
+  const ctx = document.getElementById('chartTrendBig').getContext('2d');
+  if (chartTrendBigInstance) chartTrendBigInstance.destroy();
+  chartTrendBigInstance = new Chart(ctx, {
+    data: {
+      labels: keys,
+      datasets: [
+        { type: 'line', label: 'Revenue', data: revs, borderColor: '#00E273', backgroundColor: 'rgba(0,226,115,0.08)', borderWidth: 2, tension: 0.25, fill: true, pointRadius: 0, yAxisID: 'y1' },
+        { type: 'bar',  label: 'Pairs',   data: pairs, backgroundColor: 'rgba(0,42,58,0.35)', borderRadius: 2, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: {size:11}, boxWidth: 10 } },
+        tooltip: { backgroundColor: '#002A3A' } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: {size:10}, color: '#64748b', maxTicksLimit: 12 } },
+        y1: { position: 'left', grid: { color: '#f1f5f9' }, ticks: { font:{size:10}, color:'#64748b', callback: v => fmtRpShort(v) } },
+        y2: { position: 'right', grid: { display: false }, ticks: { font:{size:10}, color:'#64748b' } }
+      }
+    }
+  });
+
+  // Breakdown table
+  const total = { revenue: 0, pairs: 0, transactions: 0 };
+  const rows = keys.map(k => {
+    const v = byBucket[k];
+    total.revenue += v.revenue; total.pairs += v.pairs; total.transactions += v.transactions;
+    return `<tr><td class="strong">${k}</td><td class="right">${fmtRpShort(v.revenue)}</td><td class="right">${fmtNum(v.pairs)}</td><td class="right muted">${v.transactions ? fmtNum(v.transactions) : '—'}</td></tr>`;
+  }).join('');
+  document.getElementById('trendBody').innerHTML = rows || `<tr><td colspan="4" class="empty" style="border:none;padding:28px;">—</td></tr>`;
+  document.getElementById('trendFoot').innerHTML = rows ? `<tr><td>TOTAL</td><td class="right">${fmtRpShort(total.revenue)}</td><td class="right">${fmtNum(total.pairs)}</td><td class="right">${total.transactions ? fmtNum(total.transactions) : '—'}</td></tr>` : '';
+
+  document.getElementById('btnTrendDaily').onclick = () => { state.trendGranularity = 'day'; renderTrend(data); };
+  document.getElementById('btnTrendMonthly').onclick = () => { state.trendGranularity = 'month'; renderTrend(data); };
 }
 
 // ============ MAIN PIPELINE ============
@@ -1205,7 +1493,10 @@ async function refresh({ reloadData = true } = {}) {
         setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
       }
     }
-    renderExecutive(state.rawData || {});
+    const d = state.rawData || {};
+    renderExecutive(d);
+    // Render any currently-active non-Executive tab using the same payload
+    renderActiveTab(d);
     state.lastUpdate = new Date();
     document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
   } catch (e) {
@@ -1219,6 +1510,17 @@ async function refresh({ reloadData = true } = {}) {
   }
 }
 
+function renderActiveTab(data) {
+  const active = document.querySelector('.tab-btn.active');
+  const tab = active ? active.dataset.tab : 'executive';
+  try {
+    if (tab === 'executive') renderExecutive(data);
+    else if (tab === 'outlet') renderOutlet(data);
+    else if (tab === 'produk') renderProduk(data);
+    else if (tab === 'trend') renderTrend(data);
+  } catch (e) { console.error('renderActiveTab', tab, e); }
+}
+
 // ============ EVENTS ============
 function setupEvents() {
   // Tabs
@@ -1228,6 +1530,8 @@ function setupEvents() {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      // Render the tab content using already-loaded payload (no refetch)
+      if (state.rawData) renderActiveTab(state.rawData);
     };
   });
 

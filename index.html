@@ -168,6 +168,107 @@ html, body {
 }
 .toggle-btn.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
 
+/* ======= MULTI-SELECT FILTER COMPONENT ======= */
+.msx { position: relative; }
+.msx-btn {
+  width: 100%; min-height: 28px; padding: 4px 24px 4px 8px;
+  font: inherit; font-size: 12px; text-align: left;
+  background: var(--card); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  position: relative; transition: border 0.15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.msx-btn:hover { border-color: #cbd5e1; }
+.msx-btn.has-value { border-color: var(--accent); background: rgba(0,226,115,0.04); }
+.msx-btn::after {
+  content: '▾'; position: absolute; right: 8px; top: 50%;
+  transform: translateY(-50%); font-size: 9px; color: var(--fg-soft);
+}
+.msx-btn-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.msx-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 5px;
+  background: var(--accent); color: var(--navy);
+  font-size: 9px; font-weight: 700;
+  border-radius: 999px; flex-shrink: 0;
+}
+.msx-popup {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 500;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  margin-top: 3px; padding: 6px;
+  max-height: 340px; min-width: 200px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.msx-popup[hidden] { display: none !important; }
+.sku-suggestions[hidden] { display: none !important; }
+.msx-search {
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: inherit; font-size: 11.5px; width: 100%; outline: none;
+}
+.msx-search:focus { border-color: var(--accent); }
+.msx-actions { display: flex; gap: 3px; }
+.msx-actions button {
+  flex: 1; font: inherit; font-size: 10px; font-weight: 600;
+  padding: 4px 6px; background: var(--muted);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; color: var(--fg);
+}
+.msx-actions button:hover { background: #eef2f7; }
+.msx-list {
+  overflow-y: auto; max-height: 260px;
+  list-style: none; margin: 0; padding: 0;
+}
+.msx-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; cursor: pointer; font-size: 11.5px;
+  border-radius: var(--radius-sm);
+  user-select: none;
+}
+.msx-option:hover { background: var(--muted); }
+.msx-option input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; margin: 0; }
+.msx-option.active { background: rgba(0,226,115,0.08); font-weight: 500; }
+.msx-empty { padding: 14px 8px; text-align: center; color: var(--fg-muted); font-size: 11px; }
+
+/* ======= SKU TYPEAHEAD ======= */
+.sku-ta-wrap { position: relative; flex: 1; }
+.sku-ta-input-wrap {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 3px 6px; background: var(--card);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  min-height: 30px;
+}
+.sku-ta-input-wrap:focus-within { border-color: var(--accent); }
+.sku-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 3px 2px 8px; font-size: 11px; font-weight: 500;
+  background: rgba(0,42,58,0.08); color: var(--navy);
+  border-radius: 3px; line-height: 1.2;
+}
+.sku-chip button {
+  background: none; border: none; cursor: pointer; padding: 1px 4px;
+  font-size: 14px; line-height: 1; color: var(--navy); opacity: 0.6;
+  border-radius: 2px;
+}
+.sku-chip button:hover { background: rgba(0,42,58,0.12); opacity: 1; }
+.sku-ta-input { border: none; outline: none; flex: 1; min-width: 100px; font: inherit; font-size: 12px; padding: 3px 4px; background: transparent; }
+.sku-suggestions {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 500;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  margin-top: 3px; max-height: 320px; overflow-y: auto;
+}
+.sku-suggestion {
+  padding: 7px 10px; cursor: pointer; font-size: 11.5px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: center; gap: 8px;
+}
+.sku-suggestion:hover, .sku-suggestion.active { background: var(--muted); }
+.sku-suggestion-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-suggestion-code { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--fg-muted); }
+.sku-suggestion-meta { font-size: 10px; color: var(--fg-soft); text-align: right; flex-shrink: 0; }
+
 /* ======= TAB NAV ======= pill navy on active (not underline — differentiates from iseller) */
 .tab-nav {
   display: flex; flex-wrap: wrap; gap: 4px;
@@ -422,40 +523,34 @@ table.data tfoot td {
       </select>
     </div>
     <div class="filter-group flex">
-      <label class="filter-label" for="fArea">Area</label>
-      <select id="fArea" class="filter-select"><option value="">Semua</option></select>
+      <label class="filter-label">Area</label>
+      <div class="msx" id="msArea"></div>
     </div>
     <div class="filter-group flex">
-      <label class="filter-label" for="fStore">Toko</label>
-      <select id="fStore" class="filter-select"><option value="">Semua</option></select>
+      <label class="filter-label" id="msStoreLabel">Toko</label>
+      <div class="msx" id="msStore"></div>
     </div>
     <div class="filter-group flex">
-      <label class="filter-label" for="fGender">Gender</label>
-      <select id="fGender" class="filter-select">
-        <option value="">Semua</option>
-        <option value="MEN">Men</option>
-        <option value="LADIES">Ladies</option>
-        <option value="KIDS">Kids</option>
-        <option value="BOYS">Boys</option>
-        <option value="GIRLS">Girls</option>
-        <option value="BABY">Baby</option>
-        <option value="JUNIOR">Junior</option>
-      </select>
+      <label class="filter-label">Gender</label>
+      <div class="msx" id="msGender"></div>
     </div>
     <div class="filter-group flex">
-      <label class="filter-label" for="fSeries">Series</label>
-      <select id="fSeries" class="filter-select"><option value="">Semua</option></select>
+      <label class="filter-label">Series</label>
+      <div class="msx" id="msSeries"></div>
     </div>
     <div class="filter-group flex">
-      <label class="filter-label" for="fTier">Tier</label>
-      <select id="fTier" class="filter-select"><option value="">Semua</option></select>
+      <label class="filter-label">Tier</label>
+      <div class="msx" id="msTier"></div>
     </div>
     <button class="btn-reset" id="btnReset">Reset</button>
 
     <div class="search-row" style="width:100%;">
-      <div class="search-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
-        <input type="text" id="fSearch" placeholder="Cari SKU, artikel, kode... (Enter untuk cari)">
+      <div class="sku-ta-wrap" id="skuTypeahead">
+        <div class="sku-ta-input-wrap">
+          <div id="skuChips" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+          <input type="text" id="fSearch" class="sku-ta-input" placeholder="Cari SKU, artikel, kode (min 3 huruf)..." autocomplete="off">
+        </div>
+        <div class="sku-suggestions" id="skuSuggestions" hidden></div>
       </div>
       <button class="toggle-btn" id="btnSkuOnly">SKU Only: OFF</button>
     </div>
@@ -750,7 +845,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.2 · build 2026-04-22 · filters wired + size sort + gender series label</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.3 · build 2026-04-23 · multi-select filters + sku typeahead</span>
   </footer>
 
 </div>
@@ -765,18 +860,20 @@ const state = {
   channel: 'global',
   from: null,
   to: null,
-  area: '',
-  store: '',
-  gender: '',
-  series: '',
-  tier: '',
-  search: '',
+  area: [],    // array (multi-select)
+  store: [],
+  gender: [],
+  series: [],
+  tier: [],
+  sku: [],     // array of kode_besar from SKU typeahead chips
+  search: '',  // free text search (still supported)
   skuOnly: false,
   trendGranularity: 'day',
   page: 1,
   pageSize: 10,
-  rawData: [],     // sales rows for selected channel
+  rawData: {},
   lastUpdate: null,
+  referenceOptions: null, // cached reference list for current channel/date for dropdowns
 };
 
 // In-memory cache: keys are `${channel}:${from}:${to}:s${0|1}` (1 = sandal-only).
@@ -857,16 +954,17 @@ function setProgress(key, state) {
 //   { kpis, timeSeries, byChannel, byArea, byEntity, byGender, bySeries, byTier, byTipe, bySize, rankByArticle }
 async function loadChannel(channel, from, to) {
   const sandalOnly = !state.skuOnly;
-  // Collect active filters; include in cache key + URL params
   const qs = new URLSearchParams({
     channel, from, to,
     sku_only: String(sandalOnly),
   });
-  if (state.area)   qs.set('area', state.area);
-  if (state.store)  qs.set('store', state.store);
-  if (state.gender) qs.set('gender', state.gender);
-  if (state.series) qs.set('series', state.series);
-  if (state.tier)   qs.set('tier', state.tier);
+  // Array filters — append each value as a repeated param
+  const arrKeys = ['area','store','gender','series','tier','sku'];
+  arrKeys.forEach(k => {
+    const v = state[k];
+    if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
+    else if (v) qs.append(k, v);
+  });
   if (state.search) qs.set('search', state.search);
   const cacheKey = qs.toString();
   if (cache[cacheKey]) return cache[cacheKey];
@@ -1001,35 +1099,41 @@ function aggregate(rows) {
   };
 }
 
-// ============ POPULATE FILTERS ============
-// Consumes the pre-aggregated payload to fill the dropdowns.
-function populateFilters(data) {
-  const areas   = (data.byArea   || []).map(x => String(x.name || '')).filter(s => s && s !== '-');
-  const stores  = (data.byEntity || []).map(x => String(x.name || '')).filter(s => s);
-  const series  = (data.bySeries || []).map(x => String(x.name || '')).filter(s => s && s !== '-');
-  const tiers   = (data.byTier   || []).map(x => String(x.name || '')).filter(s => s && s !== '-');
-
-  const fill = (id, values, label) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const prev = el.value;
-    const unique = Array.from(new Set(values));
-    el.innerHTML = `<option value="">${label}</option>` + unique.sort().map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
-    if (unique.includes(prev)) el.value = prev;
-  };
-
-  fill('fArea', areas, 'Semua Area');
-  fill('fStore', stores, 'Semua ' + filterEntityLabel(state.channel));
-  fill('fSeries', series, 'Semua Series');
-  fill('fTier', Array.from(new Set(tiers)).sort((a,b) => {
-    const na = Number(a), nb = Number(b);
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    return String(a).localeCompare(String(b));
-  }), 'Semua Tier');
-
-  const storeLabel = document.querySelector('label[for="fStore"]');
-  if (storeLabel) storeLabel.textContent = filterEntityLabel(state.channel);
+// ============ REFERENCE OPTIONS (for filter dropdowns) ============
+// Load once per channel/date/skuOnly. Independent from currently-filtered payload
+// so dropdowns keep their full option list even after a filter is applied.
+async function loadReferenceOptions() {
+  const sandalOnly = !state.skuOnly;
+  const qs = new URLSearchParams({
+    channel: state.channel, from: state.from, to: state.to,
+    sku_only: String(sandalOnly),
+  });
+  try {
+    const data = await fetchAPI('/api/sales/filter-options?' + qs.toString());
+    state.referenceOptions = data || {};
+  } catch (e) {
+    console.warn('loadReferenceOptions failed:', e.message);
+    state.referenceOptions = { areas: [], stores: [], series: [], tiers: [], genders: [] };
+  }
+  applyReferenceOptions();
 }
+
+// Push reference lists into the multi-select components
+function applyReferenceOptions() {
+  const r = state.referenceOptions || {};
+  if (window._msx) {
+    window._msx.area   && window._msx.area.setOptions(r.areas   || []);
+    window._msx.store  && window._msx.store.setOptions(r.stores  || []);
+    window._msx.gender && window._msx.gender.setOptions(r.genders || []);
+    window._msx.series && window._msx.series.setOptions(r.series || []);
+    window._msx.tier   && window._msx.tier.setOptions(r.tiers   || []);
+  }
+  const label = document.getElementById('msStoreLabel');
+  if (label) label.textContent = filterEntityLabel(state.channel);
+}
+
+// Legacy populateFilters kept as thin no-op (reference options handle populating now).
+function populateFilters(data) { /* handled by loadReferenceOptions */ }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1519,13 +1623,14 @@ function renderProduk(data) {
     const el = document.getElementById(id);
     if (el) el.style.display = hide ? 'none' : '';
   };
-  toggleCard('cardProdukGender', !!state.gender);
-  toggleCard('cardProdukSeries', !!state.series);
-  toggleCard('cardProdukTier',   !!state.tier);
+  const hasFilter = (v) => Array.isArray(v) ? v.length > 0 : !!v;
+  toggleCard('cardProdukGender', hasFilter(state.gender));
+  toggleCard('cardProdukSeries', hasFilter(state.series));
+  toggleCard('cardProdukTier',   hasFilter(state.tier));
 
-  if (!state.gender) renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12);
-  if (!state.series) renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
-  if (!state.tier)   renderChart('chartProdukTier',   data.byTier   || [], barOpts, 'bar', 10);
+  if (!hasFilter(state.gender)) renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12);
+  if (!hasFilter(state.series)) renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
+  if (!hasFilter(state.tier))   renderChart('chartProdukTier',   data.byTier   || [], barOpts, 'bar', 10);
   renderChart('chartProdukTipe', data.byTipe || [], pieOpts, 'doughnut', 10);
   // Size: single color, more rows, ordered (backend already sorts naturally ascending)
   renderChart('chartProdukSize', data.bySize || [], barOpts, 'bar', 30, '#00E273');
@@ -1982,6 +2087,254 @@ async function renderRefund() {
   }
 }
 
+// ============ MULTI-SELECT COMPONENT ============
+class MultiSelect {
+  constructor(host, { placeholder = 'Semua', searchable = false, onChange = null } = {}) {
+    this.host = host;
+    this.placeholder = placeholder;
+    this.searchable = searchable;
+    this.onChange = onChange;
+    this.options = [];      // array of {value, label}
+    this.selected = new Set();
+    this.open = false;
+    this._build();
+  }
+  _build() {
+    this.host.classList.add('msx');
+    this.host.innerHTML = '';
+    this.btn = document.createElement('button');
+    this.btn.type = 'button';
+    this.btn.className = 'msx-btn';
+    this.btn.onclick = (e) => { e.stopPropagation(); this.toggle(); };
+    this.host.appendChild(this.btn);
+
+    this.popup = document.createElement('div');
+    this.popup.className = 'msx-popup';
+    this.popup.hidden = true;
+    this.popup.onclick = (e) => e.stopPropagation();
+    this.host.appendChild(this.popup);
+
+    if (this.searchable) {
+      this.search = document.createElement('input');
+      this.search.type = 'text';
+      this.search.className = 'msx-search';
+      this.search.placeholder = 'Cari...';
+      this.search.oninput = () => this._renderList();
+      this.popup.appendChild(this.search);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'msx-actions';
+    const allBtn = document.createElement('button');
+    allBtn.type = 'button';
+    allBtn.textContent = 'Pilih Semua';
+    allBtn.onclick = () => this.selectAllVisible();
+    const clrBtn = document.createElement('button');
+    clrBtn.type = 'button';
+    clrBtn.textContent = 'Hapus';
+    clrBtn.onclick = () => this.clear();
+    actions.appendChild(allBtn);
+    actions.appendChild(clrBtn);
+    this.popup.appendChild(actions);
+
+    this.list = document.createElement('ul');
+    this.list.className = 'msx-list';
+    this.popup.appendChild(this.list);
+
+    document.addEventListener('click', (e) => {
+      if (this.open && !this.host.contains(e.target)) this.close();
+    });
+    this._updateButton();
+  }
+  setOptions(values) {
+    this.options = (values || []).map(v => typeof v === 'string' ? { value: v, label: v } : v);
+    this._renderList();
+    this._updateButton();
+  }
+  setSelected(values) {
+    this.selected = new Set(values || []);
+    this._renderList();
+    this._updateButton();
+  }
+  getSelected() { return Array.from(this.selected); }
+  _renderList() {
+    const q = this.search ? this.search.value.toLowerCase().trim() : '';
+    const visible = q ? this.options.filter(o => o.label.toLowerCase().includes(q)) : this.options;
+    this.list.innerHTML = '';
+    if (!visible.length) {
+      const empty = document.createElement('li');
+      empty.className = 'msx-empty';
+      empty.textContent = q ? 'Tidak ada hasil untuk "' + q + '"' : 'Tidak ada opsi';
+      this.list.appendChild(empty);
+      return;
+    }
+    for (const opt of visible) {
+      const li = document.createElement('li');
+      li.className = 'msx-option' + (this.selected.has(opt.value) ? ' active' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = this.selected.has(opt.value);
+      cb.onclick = (e) => { e.stopPropagation(); this._toggleValue(opt.value); };
+      const lbl = document.createElement('span');
+      lbl.textContent = opt.label;
+      li.appendChild(cb);
+      li.appendChild(lbl);
+      li.onclick = (e) => {
+        if (e.target.tagName !== 'INPUT') {
+          this._toggleValue(opt.value);
+        }
+      };
+      this.list.appendChild(li);
+    }
+  }
+  _toggleValue(v) {
+    if (this.selected.has(v)) this.selected.delete(v); else this.selected.add(v);
+    this._renderList();
+    this._updateButton();
+    this.onChange && this.onChange(Array.from(this.selected));
+  }
+  selectAllVisible() {
+    const q = this.search ? this.search.value.toLowerCase().trim() : '';
+    const visible = q ? this.options.filter(o => o.label.toLowerCase().includes(q)) : this.options;
+    for (const opt of visible) this.selected.add(opt.value);
+    this._renderList();
+    this._updateButton();
+    this.onChange && this.onChange(Array.from(this.selected));
+  }
+  clear() {
+    if (this.selected.size === 0) return;
+    this.selected.clear();
+    this._renderList();
+    this._updateButton();
+    this.onChange && this.onChange([]);
+  }
+  _updateButton() {
+    const n = this.selected.size;
+    if (n === 0) {
+      this.btn.innerHTML = `<span class="msx-btn-text">${escapeHtml(this.placeholder)}</span>`;
+      this.btn.classList.remove('has-value');
+    } else if (n === 1) {
+      const v = Array.from(this.selected)[0];
+      this.btn.innerHTML = `<span class="msx-btn-text">${escapeHtml(v)}</span>`;
+      this.btn.classList.add('has-value');
+    } else {
+      this.btn.innerHTML = `<span class="msx-btn-text">${escapeHtml(this.placeholder)}</span> <span class="msx-badge">${n}</span>`;
+      this.btn.classList.add('has-value');
+    }
+  }
+  toggle() { this.open ? this.close() : this.open_(); }
+  open_() {
+    // Close any other open popups
+    document.querySelectorAll('.msx-popup').forEach(p => { if (p !== this.popup) p.hidden = true; });
+    this.popup.hidden = false; this.open = true;
+    if (this.search) { this.search.value = ''; this._renderList(); this.search.focus(); }
+  }
+  close() { this.popup.hidden = true; this.open = false; }
+}
+
+// ============ SKU TYPEAHEAD ============
+let skuTypeaheadDebounce = null;
+let skuSuggestionsActiveIdx = -1;
+
+function renderSkuChips() {
+  const wrap = document.getElementById('skuChips');
+  if (!wrap) return;
+  wrap.innerHTML = (state.sku || []).map(k => `
+    <span class="sku-chip">${escapeHtml(k)}<button type="button" data-sku="${escapeHtml(k)}">×</button></span>`).join('');
+  wrap.querySelectorAll('button[data-sku]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const v = btn.getAttribute('data-sku');
+      state.sku = (state.sku || []).filter(x => x !== v);
+      renderSkuChips();
+      state.page = 1;
+      refresh({ reloadData: true });
+    };
+  });
+}
+
+async function fetchSkuSuggestions(q) {
+  const sandalOnly = !state.skuOnly;
+  const qs = new URLSearchParams({
+    q, channel: state.channel, from: state.from, to: state.to,
+    sku_only: String(sandalOnly), limit: '15',
+  });
+  try {
+    return await fetchAPI('/api/sales/sku-suggest?' + qs.toString());
+  } catch (e) {
+    console.warn('sku-suggest failed:', e.message);
+    return [];
+  }
+}
+
+function setupSkuTypeahead() {
+  const input = document.getElementById('fSearch');
+  const sugs = document.getElementById('skuSuggestions');
+  if (!input || !sugs) return;
+  renderSkuChips();
+
+  const closeSuggestions = () => { sugs.hidden = true; sugs.innerHTML = ''; skuSuggestionsActiveIdx = -1; };
+
+  const renderSuggestions = (items) => {
+    if (!items || !items.length) {
+      sugs.innerHTML = `<div class="sku-suggestion" style="color:var(--fg-muted);">Tidak ada hasil.</div>`;
+      sugs.hidden = false;
+      return;
+    }
+    sugs.innerHTML = items.map((r, i) => `
+      <div class="sku-suggestion" data-idx="${i}" data-kb="${escapeHtml(r.kode_besar||'')}">
+        <div class="sku-suggestion-main">
+          <div class="sku-suggestion-code">${escapeHtml(r.kode_besar||'')}</div>
+          <div>${escapeHtml(r.product_name || '-')}</div>
+        </div>
+        <div class="sku-suggestion-meta">${escapeHtml(r.gender||'-')} · ${fmtNum(r.pairs||0)} pairs</div>
+      </div>`).join('');
+    sugs.hidden = false;
+    sugs.querySelectorAll('.sku-suggestion').forEach(el => {
+      el.onclick = () => {
+        const kb = el.getAttribute('data-kb');
+        if (kb && !(state.sku || []).includes(kb)) {
+          state.sku = [...(state.sku || []), kb];
+          renderSkuChips();
+          input.value = '';
+          closeSuggestions();
+          state.page = 1;
+          refresh({ reloadData: true });
+        }
+      };
+    });
+  };
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(skuTypeaheadDebounce);
+    if (q.length < 3) { closeSuggestions(); return; }
+    skuTypeaheadDebounce = setTimeout(async () => {
+      const items = await fetchSkuSuggestions(q);
+      renderSuggestions(items);
+    }, 300);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSuggestions();
+    if (e.key === 'Backspace' && input.value === '' && (state.sku||[]).length) {
+      // Backspace on empty input → pop last chip
+      state.sku = state.sku.slice(0, -1);
+      renderSkuChips();
+      state.page = 1;
+      refresh({ reloadData: true });
+    }
+    if (e.key === 'Enter' && input.value.trim().length >= 2) {
+      // Enter without suggestion → fall back to free-text search
+      state.search = input.value.trim();
+      state.page = 1;
+      refresh({ reloadData: true });
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#skuTypeahead')) closeSuggestions();
+  });
+}
+
 // ============ MAIN PIPELINE ============
 function showStatus(text, kind) {
   const el = document.getElementById('statusBar');
@@ -2096,63 +2449,78 @@ function setupEvents() {
     btn.onclick = () => applyPreset(btn.dataset.preset);
   });
 
-  // Channel changes → invalidate + reload
-  document.getElementById('fChannel').onchange = (e) => {
+  // Channel changes → clear entity-scoped filters (area/store vary per channel), reload ref + data
+  document.getElementById('fChannel').onchange = async (e) => {
     state.channel = e.target.value;
     state.page = 1;
-    state.area = ''; state.store = '';
-    document.getElementById('fArea').value = '';
-    document.getElementById('fStore').value = '';
+    // Reset scoped filters that won't overlap across channels
+    state.area = []; state.store = [];
+    if (window._msx) {
+      window._msx.area && window._msx.area.setSelected([]);
+      window._msx.store && window._msx.store.setSelected([]);
+    }
+    await loadReferenceOptions();
     refresh({ reloadData: true });
   };
 
-  // Date changes → invalidate cache + reload
-  const onDateChange = () => {
+  // Date changes → invalidate cache + reload (keep filters)
+  const onDateChange = async () => {
     state.from = document.getElementById('fPeriodeMulai').value;
     state.to = document.getElementById('fPeriodeAkhir').value;
     Object.keys(cache).forEach(k => cache[k] = null);
     state.page = 1;
-    // un-highlight preset buttons since date no longer matches a preset
     document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+    await loadReferenceOptions();
     refresh({ reloadData: true });
   };
   document.getElementById('fPeriodeMulai').onchange = onDateChange;
   document.getElementById('fPeriodeAkhir').onchange = onDateChange;
 
-  // Other filters → refetch (backend now handles filtering)
-  ['fArea','fStore','fGender','fSeries','fTier'].forEach(id => {
-    document.getElementById(id).onchange = (e) => {
-      state[id.slice(1).toLowerCase()] = e.target.value;
-      state.page = 1;
-      refresh({ reloadData: true });
-    };
-  });
+  // Multi-select filters wired as component instances.
+  // Each instance notifies us with new selected-array; we update state + refetch.
+  window._msx = window._msx || {};
+  const buildMsx = (containerId, stateKey, { searchable, placeholder }) => {
+    const host = document.getElementById(containerId);
+    if (!host) return null;
+    const inst = new MultiSelect(host, {
+      placeholder,
+      searchable,
+      onChange: (vals) => {
+        state[stateKey] = vals;
+        state.page = 1;
+        refresh({ reloadData: true });
+      }
+    });
+    return inst;
+  };
+  window._msx.area   = buildMsx('msArea',   'area',   { searchable: false, placeholder: 'Semua Area' });
+  window._msx.store  = buildMsx('msStore',  'store',  { searchable: true,  placeholder: 'Semua Toko' });
+  window._msx.gender = buildMsx('msGender', 'gender', { searchable: false, placeholder: 'Semua Gender' });
+  window._msx.series = buildMsx('msSeries', 'series', { searchable: true,  placeholder: 'Semua Series' });
+  window._msx.tier   = buildMsx('msTier',   'tier',   { searchable: false, placeholder: 'Semua Tier' });
 
-  // Search — triggers refetch on Enter
-  document.getElementById('fSearch').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      state.search = e.target.value.trim();
-      state.page = 1;
-      refresh({ reloadData: true });
-    }
-  });
+  // SKU typeahead — debounced, min 3 chars, multi-select via chips
+  setupSkuTypeahead();
 
   // SKU Only toggle: OFF (default) = hide non-sandal items; ON = include accessories (bags/inbox/etc)
-  document.getElementById('btnSkuOnly').onclick = (e) => {
+  document.getElementById('btnSkuOnly').onclick = async (e) => {
     state.skuOnly = !state.skuOnly;
     e.target.classList.toggle('active', state.skuOnly);
     e.target.textContent = 'SKU Only: ' + (state.skuOnly ? 'ON' : 'OFF');
     e.target.title = state.skuOnly ? 'ON = include bags/inbox/accessories' : 'OFF = sandal only (default)';
+    await loadReferenceOptions();  // ref list also changes (accessories appear/disappear)
     refresh({ reloadData: true });
   };
 
-  // Reset — clears filters and refetches
+  // Reset — clears all filters, chips, and toggle
   document.getElementById('btnReset').onclick = () => {
-    state.area = state.store = state.gender = state.series = state.tier = state.search = '';
+    state.area = []; state.store = []; state.gender = []; state.series = []; state.tier = [];
+    state.sku = []; state.search = '';
     state.skuOnly = false;
     state.page = 1;
-    ['fArea','fStore','fGender','fSeries','fTier'].forEach(id => document.getElementById(id).value = '');
+    Object.values(window._msx || {}).forEach(inst => inst && inst.setSelected([]));
     document.getElementById('fSearch').value = '';
+    renderSkuChips();
     const skuBtn = document.getElementById('btnSkuOnly');
     skuBtn.classList.remove('active');
     skuBtn.textContent = 'SKU Only: OFF';
@@ -2217,6 +2585,8 @@ function init() {
   document.getElementById('fPeriodeAkhir').min = state.from;
 
   setupEvents();
+  // Load reference options (for dropdowns) + initial data in parallel
+  loadReferenceOptions();
   refresh({ reloadData: true });
 }
 

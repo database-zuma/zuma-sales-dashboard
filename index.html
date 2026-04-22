@@ -10,8 +10,12 @@
 :root {
   --accent: #00E273;
   --accent-dark: #00c463;
+  --accent-soft: rgba(0,226,115,0.12);
   --navy: #002A3A;
-  --bg: #fafafa;
+  --navy-soft: rgba(0,42,58,0.06);
+  --gold: #D4A24C;
+  --gold-soft: rgba(212,162,76,0.18);
+  --bg: #f6f7f9;
   --card: #ffffff;
   --border: #e5e7eb;
   --border-soft: #f1f5f9;
@@ -23,8 +27,9 @@
   --warning: #f59e0b;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md: 0 2px 6px rgba(0,0,0,0.05);
-  --radius: 3px;
-  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-sm: 3px;
+  --radius-pill: 999px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -39,21 +44,39 @@ html, body {
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ======= TOP STRIP ======= */
-.top-strip { height: 4px; background: var(--accent); }
+/* ======= TOP STRIP ======= navy→green gradient, distinct from iseller's solid green */
+.top-strip {
+  height: 3px;
+  background: linear-gradient(90deg, var(--navy) 0%, var(--navy) 35%, var(--accent) 100%);
+}
 
 /* ======= SHELL ======= */
-.shell { max-width: 1400px; margin: 0 auto; padding: 16px 20px 40px; }
+.shell { max-width: 1400px; margin: 0 auto; padding: 18px 22px 40px; }
 
-/* ======= HEADER ======= */
+/* ======= HEADER ======= dark navy band with wordmark */
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 14px;
+  background: var(--navy);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  color: #fff;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-bar { width: 4px; height: 22px; background: var(--accent); border-radius: 2px; }
-.brand-title { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; color: var(--fg); }
-.brand-sub { font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 1px; }
+.brand-mark {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: 6px 6px 18px 6px;   /* asymmetric corner — Zuma mark */
+  display: flex; align-items: center; justify-content: center;
+  color: var(--navy); font-weight: 900; font-size: 14px;
+  letter-spacing: -0.04em;
+}
+.brand-title { font-size: 16px; font-weight: 600; letter-spacing: -0.015em; color: #fff; }
+.brand-sub { font-size: 10px; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 1px; }
+.header .pill { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+.header .pill strong { color: #fff; }
+.header .btn-ghost { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+.header .btn-ghost:hover { background: rgba(255,255,255,0.15); color: #fff; }
 
 .header-right { display: flex; align-items: center; gap: 8px; }
 .pill {
@@ -130,30 +153,37 @@ html, body {
 }
 .toggle-btn.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
 
-/* ======= TAB NAV ======= */
+/* ======= TAB NAV ======= pill navy on active (not underline — differentiates from iseller) */
 .tab-nav {
-  display: flex; flex-wrap: wrap; gap: 2px;
-  border-bottom: 2px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 5px;
+  border-radius: var(--radius);
   margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
 }
 .tab-btn {
-  font: inherit; font-size: 12px; font-weight: 600;
-  padding: 8px 14px; margin-bottom: -2px;
+  font: inherit; font-size: 11.5px; font-weight: 600;
+  padding: 7px 14px;
   background: transparent; border: none;
-  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-pill);
   color: var(--fg-muted); cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: all 0.18s cubic-bezier(0.4,0,0.2,1);
+  letter-spacing: 0.01em;
 }
 .tab-btn:hover { color: var(--fg); background: var(--muted); }
 .tab-btn.active {
-  color: var(--fg); border-bottom-color: var(--accent); background: var(--card);
+  color: #fff;
+  background: var(--navy);
+  box-shadow: 0 1px 3px rgba(0,42,58,0.35), inset 0 -2px 0 var(--accent);
 }
 
 /* ======= TAB CONTENT ======= */
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
-/* ======= KPI GRID ======= */
+/* ======= KPI GRID ======= accent line sits UNDER the value (not left-border) */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -163,17 +193,34 @@ html, body {
 .kpi-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
+  border-radius: var(--radius);
+  padding: 11px 14px 10px;
   box-shadow: var(--shadow-sm);
-  display: flex; flex-direction: column; gap: 3px;
+  display: flex; flex-direction: column; gap: 4px;
+  position: relative;
+  transition: transform 0.15s, box-shadow 0.15s;
 }
+.kpi-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.kpi-card.kpi-primary {
+  background: linear-gradient(180deg, var(--navy) 0%, #003c53 100%);
+  border-color: var(--navy);
+  color: #fff;
+}
+.kpi-card.kpi-primary .kpi-label { color: rgba(255,255,255,0.6); }
+.kpi-card.kpi-primary .kpi-value { color: #fff; }
+.kpi-card.kpi-primary .kpi-sub { color: rgba(255,255,255,0.55); }
+.kpi-card.kpi-primary .kpi-underline { background: var(--accent); }
 .kpi-label {
-  font-size: 9px; font-weight: 600;
+  font-size: 9px; font-weight: 700;
   color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.15em;
+}
+.kpi-value-wrap {
+  display: inline-block;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 1px;
 }
 .kpi-value {
   font-size: 15px; font-weight: 700;
@@ -239,8 +286,8 @@ table.data td.muted { color: var(--fg-muted); }
 table.data td.strong { font-weight: 500; color: var(--fg); }
 table.data tbody tr:hover { background: var(--muted); }
 table.data tfoot tr {
-  background: var(--muted);
-  border-top: 2px solid var(--accent);
+  background: linear-gradient(90deg, var(--gold-soft), var(--muted));
+  border-top: 2px solid var(--gold);
 }
 table.data tfoot td {
   font-weight: 700; color: var(--fg);
@@ -322,7 +369,7 @@ table.data tfoot td {
   <!-- HEADER -->
   <header class="header">
     <div class="brand">
-      <div class="brand-bar"></div>
+      <div class="brand-mark">Z</div>
       <div>
         <div class="brand-title">Zuma Sales Analytics</div>
         <div class="brand-sub">Omnichannel POS · Retail · Online · Consignment · Wholesale</div>
@@ -417,12 +464,12 @@ table.data tfoot td {
   <section class="tab-content active" id="tab-executive">
 
     <div class="kpi-grid" id="kpiGrid">
-      <div class="kpi-card"><div class="kpi-label">Omzet</div><div class="kpi-value" id="kpiOmzet">—</div><div class="kpi-sub" id="kpiOmzetSub">&nbsp;</div></div>
-      <div class="kpi-card"><div class="kpi-label">Pairs</div><div class="kpi-value" id="kpiPairs">—</div><div class="kpi-sub" id="kpiPairsSub">&nbsp;</div></div>
-      <div class="kpi-card"><div class="kpi-label">Transaksi</div><div class="kpi-value" id="kpiTrx">—</div><div class="kpi-sub" id="kpiTrxSub">&nbsp;</div></div>
-      <div class="kpi-card" title="Unit per Transaction = Pairs / Transactions"><div class="kpi-label">UPT</div><div class="kpi-value" id="kpiUpt">—</div><div class="kpi-sub">unit / txn</div></div>
-      <div class="kpi-card" title="Avg Selling Price = Revenue / Pairs"><div class="kpi-label">ASP</div><div class="kpi-value" id="kpiAsp">—</div><div class="kpi-sub">Rp / pair</div></div>
-      <div class="kpi-card" title="Avg Transaction Value = Revenue / Transactions"><div class="kpi-label">ATV</div><div class="kpi-value" id="kpiAtv">—</div><div class="kpi-sub">Rp / txn</div></div>
+      <div class="kpi-card kpi-primary"><div class="kpi-label">Omzet</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiOmzet">—</span></span><div class="kpi-sub" id="kpiOmzetSub">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Pairs</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiPairs">—</span></span><div class="kpi-sub" id="kpiPairsSub">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Transaksi</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiTrx">—</span></span><div class="kpi-sub" id="kpiTrxSub">&nbsp;</div></div>
+      <div class="kpi-card" title="Unit per Transaction = Pairs / Transactions"><div class="kpi-label">UPT</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiUpt">—</span></span><div class="kpi-sub">unit / txn</div></div>
+      <div class="kpi-card" title="Avg Selling Price = Revenue / Pairs"><div class="kpi-label">ASP</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiAsp">—</span></span><div class="kpi-sub">Rp / pair</div></div>
+      <div class="kpi-card" title="Avg Transaction Value = Revenue / Transactions"><div class="kpi-label">ATV</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiAtv">—</span></span><div class="kpi-sub">Rp / txn</div></div>
     </div>
 
     <div class="grid-2-wide">
@@ -584,39 +631,40 @@ async function fetchAPI(path) {
   return res.json();
 }
 
+function normalizeConsigRow(r) {
+  return {
+    date: r.date || r.order_date,
+    store: r.store_name || r.store || '',
+    area: r.area || '',
+    partner: r.partner || '',
+    sku: r.sku || '',
+    kode_besar: r.kode_besar, kode_mix: r.kode_mix, kode_mix_size: r.kode_mix_size,
+    product_name: r.product_name || r.nama_barang || '',
+    gender: r.gender || '', series: r.series || r.collection || '',
+    tier: r.tier || '', tipe: r.tipe || '', version: r.version || '',
+    qty: Number(r.qty || 0),
+    price: Number(r.price || r.sales / (r.qty||1) || 0),
+    total: Number(r.total != null ? r.total : (r.sales || 0)),  // consig uses 'sales' field
+    order_no: r.order_no || '',
+    channel: 'consig',
+  };
+}
+
 async function loadChannel(channel, from, to) {
-  // Single-call strategy: detail endpoint per channel with date range.
-  // Consignment has a different endpoint shape.
   if (cache[channel]) return cache[channel];
   let rows;
   try {
     if (channel === 'consig') {
       const data = await fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`);
-      // Consignment endpoint returns a structured object; we flatten detail (best-effort)
-      rows = (data.detail || data.transactions || []).map(r => ({
-        date: r.date || r.order_date,
-        store: r.store_name || r.store,
-        area: r.area,
-        partner: r.partner,
-        sku: r.sku,
-        product_name: r.product_name || r.nama_barang,
-        gender: r.gender,
-        series: r.series,
-        tier: r.tier,
-        qty: Number(r.qty || 0),
-        price: Number(r.price || 0),
-        total: Number(r.total || 0),
-        channel: 'consig',
-      }));
+      rows = (data.detail_rows || data.detail || []).map(normalizeConsigRow);
     } else if (channel === 'global') {
-      // Global = union of retail + online + wholesale + consig
       const [retail, online, wholesale, consig] = await Promise.all([
         fetchAPI(`/api/sales/detail?channel=retail&from=${from}&to=${to}`).catch(() => []),
         fetchAPI(`/api/sales/detail?channel=online&from=${from}&to=${to}`).catch(() => []),
         fetchAPI(`/api/sales/detail?channel=wholesale&from=${from}&to=${to}`).catch(() => []),
-        fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`).catch(() => ({ detail: [] })),
+        fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`).catch(() => ({ detail_rows: [] })),
       ]);
-      const consigRows = (consig.detail || []).map(r => ({ ...r, channel: 'consig' }));
+      const consigRows = (consig.detail_rows || consig.detail || []).map(normalizeConsigRow);
       rows = [
         ...retail.map(r => ({ ...r, channel: 'retail' })),
         ...online.map(r => ({ ...r, channel: 'online' })),
@@ -624,7 +672,6 @@ async function loadChannel(channel, from, to) {
         ...consigRows,
       ];
     } else {
-      // retail / online / wholesale
       rows = await fetchAPI(`/api/sales/detail?channel=${channel}&from=${from}&to=${to}`);
       rows = (rows || []).map(r => ({ ...r, channel }));
     }
@@ -716,9 +763,12 @@ function applyFilters(rows) {
 }
 
 // ============ AGGREGATE ============
+// hasTxnData flag: only retail (and part of global) reliably populates order_no.
+// For online/wholesale/consig, UPT/ATV are N/A — we surface "—" instead of fake zeros.
 function aggregate(rows) {
   const txnSet = new Set();
   let revenue = 0, pairs = 0, discount = 0, grossPrice = 0;
+  let txnCapable = 0; // rows that CAN contribute to txn count (have order_no)
   rows.forEach(r => {
     const q = Number(r.qty)||0;
     const total = Number(r.total)||0;
@@ -727,11 +777,15 @@ function aggregate(rows) {
     pairs += q;
     grossPrice += price * q;
     discount += Math.max(0, price*q - total);
-    if (r.order_no) txnSet.add(r.order_no);
+    if (r.order_no && String(r.order_no).trim()) {
+      txnSet.add(r.order_no);
+      txnCapable++;
+    }
   });
   const transactions = txnSet.size || 0;
+  const hasTxnData = txnCapable > 0;
   return {
-    revenue, pairs, transactions, discount, grossPrice,
+    revenue, pairs, transactions, discount, grossPrice, hasTxnData,
     upt: transactions ? pairs / transactions : 0,
     asp: pairs ? revenue / pairs : 0,
     atv: transactions ? revenue / transactions : 0,
@@ -782,17 +836,18 @@ let chartContribInstance = null;
 
 function renderExecutive(rows) {
   const agg = aggregate(rows);
+  const naDash = '—';
 
   // KPI cards
   document.getElementById('kpiOmzet').textContent = fmtRpShort(agg.revenue);
   document.getElementById('kpiOmzetSub').textContent = fmtRp(agg.revenue);
   document.getElementById('kpiPairs').textContent = fmtNum(agg.pairs);
   document.getElementById('kpiPairsSub').textContent = 'pairs';
-  document.getElementById('kpiTrx').textContent = fmtNum(agg.transactions);
-  document.getElementById('kpiTrxSub').textContent = 'transaksi';
-  document.getElementById('kpiUpt').textContent = agg.upt.toFixed(2);
-  document.getElementById('kpiAsp').textContent = fmtRpShort(agg.asp);
-  document.getElementById('kpiAtv').textContent = fmtRpShort(agg.atv);
+  document.getElementById('kpiTrx').textContent = agg.hasTxnData ? fmtNum(agg.transactions) : naDash;
+  document.getElementById('kpiTrxSub').textContent = agg.hasTxnData ? 'transaksi' : 'data tidak tersedia';
+  document.getElementById('kpiUpt').textContent = agg.hasTxnData ? agg.upt.toFixed(2) : naDash;
+  document.getElementById('kpiAsp').textContent = agg.pairs ? fmtRpShort(agg.asp) : naDash;
+  document.getElementById('kpiAtv').textContent = agg.hasTxnData ? fmtRpShort(agg.atv) : naDash;
 
   renderTrendChart(rows);
   renderContribChart(rows);
@@ -982,6 +1037,7 @@ function renderPerformanceTable(rows) {
     return;
   }
 
+  const naDash = '—';
   const rowsHtml = slice.map((r, i) => `
     <tr>
       <td class="center muted">${(safePage-1)*size + i + 1}</td>
@@ -989,10 +1045,10 @@ function renderPerformanceTable(rows) {
       <td class="muted">${escapeHtml(r.area)}</td>
       <td class="right">${fmtNum(r.qty)}</td>
       <td class="right strong">${fmtRpShort(r.revenue)}</td>
-      <td class="right muted">${fmtNum(r.trx)}</td>
-      <td class="right muted">${r.upt.toFixed(1)}</td>
-      <td class="right muted">${fmtRpShort(r.asp)}</td>
-      <td class="right muted">${fmtRpShort(r.atv)}</td>
+      <td class="right muted">${r.trx ? fmtNum(r.trx) : naDash}</td>
+      <td class="right muted">${r.trx ? r.upt.toFixed(1) : naDash}</td>
+      <td class="right muted">${r.qty ? fmtRpShort(r.asp) : naDash}</td>
+      <td class="right muted">${r.trx ? fmtRpShort(r.atv) : naDash}</td>
     </tr>`).join('');
   document.getElementById('performanceBody').innerHTML = rowsHtml;
 
@@ -1001,10 +1057,10 @@ function renderPerformanceTable(rows) {
       <td class="center" colspan="3">TOTAL</td>
       <td class="right">${fmtNum(total.qty)}</td>
       <td class="right">${fmtRpShort(total.revenue)}</td>
-      <td class="right">${fmtNum(total.trx)}</td>
-      <td class="right">${totUpt.toFixed(1)}</td>
-      <td class="right">${fmtRpShort(totAsp)}</td>
-      <td class="right">${fmtRpShort(totAtv)}</td>
+      <td class="right">${total.trx ? fmtNum(total.trx) : naDash}</td>
+      <td class="right">${total.trx ? totUpt.toFixed(1) : naDash}</td>
+      <td class="right">${total.qty ? fmtRpShort(totAsp) : naDash}</td>
+      <td class="right">${total.trx ? fmtRpShort(totAtv) : naDash}</td>
     </tr>`;
 
   document.getElementById('performanceMeta').innerHTML = `${list.length} ${label.toLowerCase()} · Page ${safePage}/${pages}`;

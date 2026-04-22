@@ -131,6 +131,21 @@ html, body {
 }
 .btn-reset:hover { background: var(--muted); color: var(--fg); }
 
+.preset-bar {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.preset-btn {
+  font: inherit; font-size: 11px; font-weight: 600;
+  padding: 4px 9px;
+  background: transparent; border: none;
+  border-radius: 2px; cursor: pointer; color: var(--fg-muted);
+  transition: all 0.15s;
+}
+.preset-btn:hover { color: var(--fg); }
+.preset-btn.active { background: var(--navy); color: #fff; box-shadow: inset 0 -1px 0 var(--accent); }
+
 .search-row {
   display: flex; gap: 8px; margin-top: 8px; align-items: center;
 }
@@ -394,6 +409,15 @@ table.data tfoot td {
       <label class="filter-label" for="fPeriodeAkhir">Periode Akhir</label>
       <input type="date" id="fPeriodeAkhir" class="filter-input">
     </div>
+    <div class="filter-group">
+      <label class="filter-label">Preset</label>
+      <div class="preset-bar">
+        <button class="preset-btn" data-preset="7d">7D</button>
+        <button class="preset-btn" data-preset="30d">30D</button>
+        <button class="preset-btn" data-preset="mtd">Bulan</button>
+        <button class="preset-btn" data-preset="ytd">YTD</button>
+      </div>
+    </div>
     <div class="filter-group flex">
       <label class="filter-label" for="fChannel">Channel</label>
       <select id="fChannel" class="filter-select">
@@ -596,7 +620,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.4 · build 2026-04-22</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.5 · build 2026-04-22</span>
   </footer>
 
 </div>
@@ -1267,6 +1291,11 @@ function setupEvents() {
     };
   });
 
+  // Date preset buttons
+  document.querySelectorAll('[data-preset]').forEach(btn => {
+    btn.onclick = () => applyPreset(btn.dataset.preset);
+  });
+
   // Channel changes → invalidate + reload
   document.getElementById('fChannel').onchange = (e) => {
     state.channel = e.target.value;
@@ -1283,6 +1312,8 @@ function setupEvents() {
     state.to = document.getElementById('fPeriodeAkhir').value;
     Object.keys(cache).forEach(k => cache[k] = null);
     state.page = 1;
+    // un-highlight preset buttons since date no longer matches a preset
+    document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
     refresh({ reloadData: true });
   };
   document.getElementById('fPeriodeMulai').onchange = onDateChange;
@@ -1342,15 +1373,51 @@ function setupEvents() {
   });
 }
 
+// ============ DATE PRESETS ============
+// Default = last 7 days (fast initial load). User can expand via presets or picker.
+function daysAgoStr(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0,10);
+}
+function firstOfMonth() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-01';
+}
+const PRESETS = {
+  '7d':   () => ({ from: daysAgoStr(6),  to: todayStr(), label: '7 Hari' }),
+  '30d':  () => ({ from: daysAgoStr(29), to: todayStr(), label: '30 Hari' }),
+  'mtd':  () => ({ from: firstOfMonth(), to: todayStr(), label: 'Bulan Ini' }),
+  'ytd':  () => ({ from: firstOfYear(),  to: todayStr(), label: 'YTD' }),
+};
+function applyPreset(key) {
+  const p = PRESETS[key]();
+  state.from = p.from;
+  state.to = p.to;
+  document.getElementById('fPeriodeMulai').value = state.from;
+  document.getElementById('fPeriodeAkhir').value = state.to;
+  document.getElementById('fPeriodeAkhir').min = state.from;
+  // also clear in-memory cache so fresh range actually loads
+  Object.keys(cache).forEach(k => cache[k] = null);
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('active', b.dataset.preset === key));
+  state.page = 1;
+  refresh({ reloadData: true });
+}
+
 // ============ INIT ============
 function init() {
-  state.from = firstOfYear();
-  state.to = todayStr();
+  // default: last 7 days — fast initial load (~3k rows vs 75k for YTD)
+  const def = PRESETS['7d']();
+  state.from = def.from;
+  state.to = def.to;
   document.getElementById('fPeriodeMulai').value = state.from;
-  document.getElementById('fPeriodeMulai').max = state.to;
+  document.getElementById('fPeriodeMulai').max = todayStr();
   document.getElementById('fPeriodeAkhir').value = state.to;
-  document.getElementById('fPeriodeAkhir').max = state.to;
+  document.getElementById('fPeriodeAkhir').max = todayStr();
   document.getElementById('fPeriodeAkhir').min = state.from;
+  // mark preset 7d as active
+  const preset7 = document.querySelector('[data-preset="7d"]');
+  if (preset7) preset7.classList.add('active');
 
   setupEvents();
   refresh({ reloadData: true });

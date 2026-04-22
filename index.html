@@ -631,53 +631,123 @@ table.data tfoot td {
 
   <!-- ========= TAB: HOURLY ========= -->
   <section class="tab-content" id="tab-hourly">
-    <div class="empty">
-      <div class="empty-icon">⏰</div>
-      <div>Hourly heatmap — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Jam × Hari heatmap, peak hours, store comparison.</div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header"><div class="card-title">Penjualan per Jam</div></div>
+      <div class="card-body"><div class="chart-box" style="height:260px;"><canvas id="chartHourly"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Breakdown Jam</div></div>
+      <div class="table-wrap" style="max-height:420px;overflow:auto;">
+        <table class="data">
+          <thead><tr>
+            <th>Jam</th>
+            <th class="right">Pairs</th>
+            <th class="right">Revenue</th>
+            <th class="right">Transaksi</th>
+            <th class="right">% Share</th>
+          </tr></thead>
+          <tbody id="hourlyBody"><tr><td colspan="5" class="loading">—</td></tr></tbody>
+          <tfoot id="hourlyFoot"></tfoot>
+        </table>
+      </div>
     </div>
   </section>
 
   <!-- ========= TAB: SPG ========= -->
   <section class="tab-content" id="tab-spg">
-    <div class="empty">
-      <div class="empty-icon">👥</div>
-      <div>SPG performance — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Leaderboard, UPT/ATV per SPG, rata-rata harian.</div>
+    <div class="kpi-grid" id="spgKpiGrid">
+      <div class="kpi-card kpi-primary"><div class="kpi-label">Total SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiCount">—</span></span><div class="kpi-sub">orang</div></div>
+      <div class="kpi-card"><div class="kpi-label">Omzet Retail</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiRev">—</span></span><div class="kpi-sub">total</div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg Rev/SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiAvg">—</span></span><div class="kpi-sub">periode</div></div>
+      <div class="kpi-card"><div class="kpi-label">Top SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiTop" style="font-size:12px;">—</span></span><div class="kpi-sub" id="spgKpiTopRev">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Txn Retail</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiTxn">—</span></span><div class="kpi-sub">transaksi</div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg UPT</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiUpt">—</span></span><div class="kpi-sub">unit / txn</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">SPG Leaderboard (retail only)</div>
+        <button class="btn-ghost" id="btnSpgCsv">CSV</button>
+      </div>
+      <div class="table-wrap" style="max-height:540px;overflow:auto;">
+        <table class="data">
+          <thead><tr>
+            <th class="center" style="width:30px;">#</th>
+            <th>SPG</th>
+            <th>Outlet</th>
+            <th class="right">Pairs</th>
+            <th class="right">Revenue</th>
+            <th class="right">Txn</th>
+            <th class="right">UPT</th>
+            <th class="right">ASP</th>
+            <th class="right">ATV</th>
+          </tr></thead>
+          <tbody id="spgBody"><tr><td colspan="9" class="loading">—</td></tr></tbody>
+          <tfoot id="spgFoot"></tfoot>
+        </table>
+      </div>
     </div>
   </section>
 
   <!-- ========= TAB: TARGET ========= -->
   <section class="tab-content" id="tab-target">
-    <div class="empty">
-      <div class="empty-icon">🎯</div>
-      <div>Target vs Actual — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Achievement %, MTD trajectory, gap analysis.</div>
+    <div id="targetContent">
+      <div class="loading"><div class="spinner"></div>Memuat data target...</div>
     </div>
   </section>
 
   <!-- ========= TAB: REFUND ========= -->
   <section class="tab-content" id="tab-refund">
-    <div class="empty">
-      <div class="empty-icon">🔄</div>
-      <div>Refund monitor — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Refund rate per toko/SPG, reason breakdown, anomaly.</div>
+    <div id="refundContent">
+      <div class="loading"><div class="spinner"></div>Memuat data refund...</div>
     </div>
   </section>
 
   <!-- ========= TAB: PROMO ========= -->
   <section class="tab-content" id="tab-promo">
-    <div class="empty">
-      <div class="empty-icon">🏷️</div>
-      <div>Promo monitoring — coming soon.</div>
-      <div style="margin-top:4px;font-size:10px;">Total diskon Rp, % dari omzet, breakdown 9 dimensi (Channel/Area/Toko/SPG/SKU/Gender/Series/Tier/Version), anomaly alerts.</div>
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-primary"><div class="kpi-label">Total Diskon</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiDisc">—</span></span><div class="kpi-sub" id="promoKpiDiscPct">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">% dari Omzet</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiPct">—</span></span><div class="kpi-sub">revenue share</div></div>
+      <div class="kpi-card"><div class="kpi-label">Txn Pakai Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiTxn">—</span></span><div class="kpi-sub" id="promoKpiTxnRate">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Rate Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiRate">—</span></span><div class="kpi-sub">dari total txn</div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg Diskon/Row</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiAvg">—</span></span><div class="kpi-sub">per item kena</div></div>
+      <div class="kpi-card"><div class="kpi-label">Outlet Pakai Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiOutlets">—</span></span><div class="kpi-sub" id="promoKpiOutletsSub">&nbsp;</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header">
+        <div class="card-title">Breakdown Promo per Dimensi</div>
+        <select id="promoDimSelect" class="filter-select" style="max-width:180px;">
+          <option value="byPromoChannel">Channel</option>
+          <option value="byPromoArea">Area</option>
+          <option value="byPromoOutlet">Outlet / Toko</option>
+          <option value="byPromoSpg">SPG</option>
+          <option value="byPromoSku" selected>SKU</option>
+          <option value="byPromoGender">Gender</option>
+          <option value="byPromoSeries">Series</option>
+          <option value="byPromoTier">Tier</option>
+          <option value="byPromoVersion">Version</option>
+        </select>
+      </div>
+      <div class="table-wrap" style="max-height:500px;overflow:auto;">
+        <table class="data">
+          <thead><tr id="promoDimHead"></tr></thead>
+          <tbody id="promoDimBody"><tr><td colspan="7" class="loading">—</td></tr></tbody>
+          <tfoot id="promoDimFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">⚠️ Anomaly Alerts</div></div>
+      <div class="card-body" id="promoAnomalies">
+        <div class="muted" style="font-size:11px;">Scan SKU dengan diskon rata-rata > 25%...</div>
+      </div>
     </div>
   </section>
 
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.8 · build 2026-04-22 · +Outlet/Produk/Trend</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.9 · build 2026-04-22 · all 9 tabs</span>
   </footer>
 
 </div>
@@ -1431,6 +1501,312 @@ function renderTrend(data) {
   document.getElementById('btnTrendMonthly').onclick = () => { state.trendGranularity = 'month'; renderTrend(data); };
 }
 
+// ============ RENDER HOURLY ============
+let chartHourlyInstance = null;
+function renderHourly(data) {
+  const hours = Array.from({ length: 24 }, (_, i) => ({ hour: i, pairs: 0, revenue: 0, transactions: 0 }));
+  // Skip hour 0 in retail context because non-retail channels dump into hour 0.
+  // We include hour 0 but label it to clarify: "00:00 / non-timed".
+  (data.byHour || []).forEach(h => {
+    const idx = Number(h.hour);
+    if (idx >= 0 && idx <= 23) {
+      hours[idx].pairs += Number(h.pairs) || 0;
+      hours[idx].revenue += Number(h.revenue) || 0;
+      hours[idx].transactions += Number(h.transactions) || 0;
+    }
+  });
+  const labels = hours.map(h => h.hour === 0 ? '00*' : String(h.hour).padStart(2,'0'));
+  const pairs = hours.map(h => h.pairs);
+  const trx = hours.map(h => h.transactions);
+  const totalPairs = pairs.reduce((a,b) => a+b, 0) || 1;
+
+  const ctx = document.getElementById('chartHourly').getContext('2d');
+  if (chartHourlyInstance) chartHourlyInstance.destroy();
+  chartHourlyInstance = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Pairs', data: pairs, backgroundColor: '#00E273', borderRadius: 3, yAxisID: 'y1' },
+        { type: 'line', label: 'Transaksi', data: trx, borderColor: '#002A3A', borderWidth: 2, tension: 0.25, pointRadius: 0, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: {size:11}, boxWidth: 10 } },
+        tooltip: { backgroundColor: '#002A3A' } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: {size:10}, color: '#64748b' },
+             title: { display: true, text: 'Jam (WIB) · 00* = data non-timed (online/consig/wholesale)', font: {size:10}, color: '#94a3b8' } },
+        y1: { position: 'left', grid: { color: '#f1f5f9' }, ticks: { font:{size:10}, color:'#64748b', callback: v => fmtNum(v) } },
+        y2: { position: 'right', grid: { display: false }, ticks: { font:{size:10}, color:'#64748b' } },
+      }
+    }
+  });
+
+  const rowsHtml = hours.map(h => {
+    if (h.pairs === 0) return '';
+    const share = h.pairs / totalPairs * 100;
+    return `<tr>
+      <td class="strong">${h.hour === 0 ? '00* (non-timed)' : String(h.hour).padStart(2,'0') + ':00'}</td>
+      <td class="right">${fmtNum(h.pairs)}</td>
+      <td class="right">${fmtRpShort(h.revenue)}</td>
+      <td class="right muted">${h.transactions ? fmtNum(h.transactions) : '—'}</td>
+      <td class="right muted">${share.toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('hourlyBody').innerHTML = rowsHtml || `<tr><td colspan="5" class="empty" style="border:none;padding:28px;">—</td></tr>`;
+  const totRev = hours.reduce((a,c) => a + c.revenue, 0);
+  const totTrx = hours.reduce((a,c) => a + c.transactions, 0);
+  document.getElementById('hourlyFoot').innerHTML = rowsHtml ? `<tr><td>TOTAL</td><td class="right">${fmtNum(totalPairs)}</td><td class="right">${fmtRpShort(totRev)}</td><td class="right">${totTrx ? fmtNum(totTrx) : '—'}</td><td class="right">100%</td></tr>` : '';
+}
+
+// ============ RENDER SPG ============
+function renderSpg(data) {
+  const list = (data.bySpg || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
+  const kpis = data.kpis || {};
+  const retailTxn = Number(kpis.transactions) || 0;
+  const retailRev = (data.byChannel || []).find(c => c.name === 'retail')?.revenue || 0;
+  const avgRev = list.length ? retailRev / list.length : 0;
+  const top = list[0] || {};
+  const totalPairs = list.reduce((a,c) => a + (c.pairs||0), 0);
+  const avgUpt = retailTxn ? totalPairs / retailTxn : 0;
+
+  document.getElementById('spgKpiCount').textContent = fmtNum(list.length);
+  document.getElementById('spgKpiRev').textContent = fmtRpShort(retailRev);
+  document.getElementById('spgKpiAvg').textContent = fmtRpShort(avgRev);
+  document.getElementById('spgKpiTop').textContent = top.name ? String(top.name).slice(0,20) : '—';
+  document.getElementById('spgKpiTopRev').textContent = top.revenue ? fmtRpShort(top.revenue) : '';
+  document.getElementById('spgKpiTxn').textContent = retailTxn ? fmtNum(retailTxn) : '—';
+  document.getElementById('spgKpiUpt').textContent = avgUpt ? avgUpt.toFixed(2) : '—';
+
+  const naDash = '—';
+  document.getElementById('spgBody').innerHTML = list.length ? list.map((s,i) => {
+    const pairs = Number(s.pairs)||0, rev = Number(s.revenue)||0, trx = Number(s.transactions)||0;
+    const upt = trx ? pairs/trx : 0, asp = pairs ? rev/pairs : 0, atv = trx ? rev/trx : 0;
+    return `<tr>
+      <td class="center muted">${i+1}</td>
+      <td class="strong">${escapeHtml(String(s.name || '-'))}</td>
+      <td class="muted">${escapeHtml(String(s.outlet || '-'))}</td>
+      <td class="right">${fmtNum(pairs)}</td>
+      <td class="right strong">${fmtRpShort(rev)}</td>
+      <td class="right muted">${trx ? fmtNum(trx) : naDash}</td>
+      <td class="right muted">${trx ? upt.toFixed(1) : naDash}</td>
+      <td class="right muted">${pairs ? fmtRpShort(asp) : naDash}</td>
+      <td class="right muted">${trx ? fmtRpShort(atv) : naDash}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="9" class="empty" style="border:none;padding:28px;">Tidak ada SPG untuk periode/channel ini.</td></tr>`;
+
+  const totRev = list.reduce((a,c) => a + (c.revenue||0), 0);
+  const totPairs = list.reduce((a,c) => a + (c.pairs||0), 0);
+  const totTrx = list.reduce((a,c) => a + (c.transactions||0), 0);
+  document.getElementById('spgFoot').innerHTML = list.length ? `<tr><td class="center" colspan="3">TOTAL</td><td class="right">${fmtNum(totPairs)}</td><td class="right">${fmtRpShort(totRev)}</td><td class="right">${totTrx?fmtNum(totTrx):naDash}</td><td colspan="3"></td></tr>` : '';
+
+  document.getElementById('btnSpgCsv').onclick = () => {
+    const header = ['#','Name','Outlet','Pairs','Revenue','Transactions'];
+    const lines = [header.join(',')];
+    list.forEach((r,i) => lines.push([i+1, `"${r.name||''}"`, `"${r.outlet||''}"`, r.pairs||0, r.revenue||0, r.transactions||0].join(',')));
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `spg-${state.from}-${state.to}.csv` });
+    a.click();
+  };
+}
+
+// ============ RENDER PROMO ============
+function renderPromo(data) {
+  const p = data.promoSummary || {};
+  const totalRev = Number(p.totalRevenue) || 0;
+  const totalDisc = Number(p.totalDiscount) || 0;
+  const totalGross = Number(p.totalGross) || 0;
+  const txnTotal = Number(p.txnTotal) || 0;
+  const txnPromo = Number(p.txnWithPromo) || 0;
+  const rowsPromo = Number(p.rowsWithPromo) || 0;
+  const rowsTotal = Number(p.rowsTotal) || 0;
+  const outletsTotal = Number(p.outletsTotal) || 0;
+  const outletsPromo = Number(p.outletsWithPromo) || 0;
+
+  document.getElementById('promoKpiDisc').textContent = fmtRpShort(totalDisc);
+  document.getElementById('promoKpiDiscPct').textContent = fmtRp(totalDisc);
+  document.getElementById('promoKpiPct').textContent = totalGross ? (totalDisc/totalGross*100).toFixed(2) + '%' : '—';
+  document.getElementById('promoKpiTxn').textContent = txnPromo ? fmtNum(txnPromo) : '—';
+  document.getElementById('promoKpiTxnRate').textContent = txnTotal ? `dari ${fmtNum(txnTotal)} txn` : '—';
+  document.getElementById('promoKpiRate').textContent = rowsTotal ? ((rowsPromo/rowsTotal)*100).toFixed(1) + '%' : '—';
+  document.getElementById('promoKpiAvg').textContent = p.avgDiscountPerPromoRow ? fmtRpShort(p.avgDiscountPerPromoRow) : '—';
+  document.getElementById('promoKpiOutlets').textContent = fmtNum(outletsPromo);
+  document.getElementById('promoKpiOutletsSub').textContent = outletsTotal ? `dari ${fmtNum(outletsTotal)} outlet` : '';
+
+  const renderDim = (dimKey) => {
+    const items = (data[dimKey] || []).slice().sort((a,b) => (b.discount||0) - (a.discount||0));
+    const headers = {
+      byPromoChannel: ['Channel'], byPromoArea: ['Area'],
+      byPromoOutlet: ['Outlet', 'Channel', 'Area'], byPromoSpg: ['SPG', 'Outlet'],
+      byPromoSku: ['SKU', 'Nama Barang'], byPromoGender: ['Gender'],
+      byPromoSeries: ['Series'], byPromoTier: ['Tier'], byPromoVersion: ['Version'],
+    };
+    const extraCols = headers[dimKey] || ['Name'];
+    const head = `
+      <th class="center" style="width:30px;">#</th>
+      ${extraCols.map(c => `<th>${c}</th>`).join('')}
+      <th class="right">Revenue</th>
+      <th class="right">Diskon Rp</th>
+      <th class="right">% Diskon</th>
+      <th class="right">Rows Promo / Total</th>`;
+    document.getElementById('promoDimHead').innerHTML = head;
+
+    if (!items.length) {
+      document.getElementById('promoDimBody').innerHTML = `<tr><td colspan="${extraCols.length+5}" class="empty" style="border:none;padding:28px;">Tidak ada data diskon untuk dimensi ini.</td></tr>`;
+      document.getElementById('promoDimFoot').innerHTML = '';
+      return;
+    }
+
+    const warnColor = (pct) => pct > 25 ? 'color:#dc2626;font-weight:600;' : pct > 10 ? 'color:#f59e0b;' : '';
+    const rowsHtml = items.slice(0, 100).map((r,i) => {
+      const revenue = Number(r.revenue) || 0;
+      const discount = Number(r.discount) || 0;
+      const discPct = Number(r.discount_pct) || 0;
+      const rowsPromoCnt = Number(r.rows_promo) || 0;
+      const rowsTotalCnt = Number(r.rows_total) || 0;
+      const extraCells = dimKey === 'byPromoOutlet'
+        ? [String(r.channel||'-').toUpperCase(), r.area||'-']
+        : dimKey === 'byPromoSpg'
+        ? [r.outlet||'-']
+        : dimKey === 'byPromoSku'
+        ? [r.product_name || '-']
+        : [];
+      const nameCell = `<td class="strong">${escapeHtml(String(r.name || '-'))}</td>`;
+      const extraHtml = extraCells.map(c => `<td class="muted">${escapeHtml(String(c))}</td>`).join('');
+      return `<tr>
+        <td class="center muted">${i+1}</td>
+        ${nameCell}
+        ${extraHtml}
+        <td class="right">${fmtRpShort(revenue)}</td>
+        <td class="right strong">${fmtRpShort(discount)}</td>
+        <td class="right" style="${warnColor(discPct)}">${discPct.toFixed(2)}%</td>
+        <td class="right muted">${fmtNum(rowsPromoCnt)} / ${fmtNum(rowsTotalCnt)}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('promoDimBody').innerHTML = rowsHtml;
+
+    const totRev = items.reduce((a,c) => a + (Number(c.revenue)||0), 0);
+    const totDisc = items.reduce((a,c) => a + (Number(c.discount)||0), 0);
+    const totRowsPromo = items.reduce((a,c) => a + (Number(c.rows_promo)||0), 0);
+    const totRowsTotal = items.reduce((a,c) => a + (Number(c.rows_total)||0), 0);
+    const totPct = (totRev + totDisc) > 0 ? totDisc/(totRev+totDisc)*100 : 0;
+    document.getElementById('promoDimFoot').innerHTML = `<tr>
+      <td colspan="${extraCols.length+1}" class="center">TOTAL</td>
+      <td class="right">${fmtRpShort(totRev)}</td>
+      <td class="right">${fmtRpShort(totDisc)}</td>
+      <td class="right">${totPct.toFixed(2)}%</td>
+      <td class="right">${fmtNum(totRowsPromo)} / ${fmtNum(totRowsTotal)}</td>
+    </tr>`;
+  };
+
+  const dimSel = document.getElementById('promoDimSelect');
+  dimSel.onchange = () => renderDim(dimSel.value);
+  renderDim(dimSel.value);
+
+  // Anomaly: SKU with avg discount > 25%
+  const anomalies = (data.byPromoSku || []).filter(s => (s.discount_pct||0) > 25).slice(0, 10);
+  if (anomalies.length) {
+    document.getElementById('promoAnomalies').innerHTML = `
+      <div style="font-size:11px;margin-bottom:8px;color:#dc2626;font-weight:600;">${anomalies.length} SKU dengan diskon rata-rata > 25%:</div>
+      <table class="data">
+        <thead><tr><th>SKU</th><th>Nama</th><th class="right">Diskon Rp</th><th class="right">% Diskon</th><th class="right">Rows</th></tr></thead>
+        <tbody>${anomalies.map(s => `<tr>
+          <td class="strong">${escapeHtml(s.name)}</td>
+          <td class="muted">${escapeHtml(s.product_name || '-')}</td>
+          <td class="right strong">${fmtRpShort(s.discount||0)}</td>
+          <td class="right" style="color:#dc2626;font-weight:600;">${(s.discount_pct||0).toFixed(1)}%</td>
+          <td class="right muted">${fmtNum(s.rows_promo||0)} / ${fmtNum(s.rows_total||0)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  } else {
+    document.getElementById('promoAnomalies').innerHTML = '<div class="muted" style="font-size:11px;">✅ Tidak ada SKU dengan diskon rata-rata > 25%.</div>';
+  }
+}
+
+// ============ TARGET (lazy fetch) ============
+async function renderTarget() {
+  const wrap = document.getElementById('targetContent');
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target...</div>';
+  try {
+    const data = await fetchAPI('/api/targets');
+    const targets = Array.isArray(data) ? data : (data.targets || data.items || []);
+    if (!targets.length) {
+      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:40px;">Endpoint /api/targets balik kosong. Backend belum populate data target atau format beda dari yang diharapkan. Cek DevTools → Network → /api/targets untuk payload sebenarnya.</div>';
+      return;
+    }
+    // Render targets — format depends on backend, best-effort render
+    const rev = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
+    const actualMap = Object.fromEntries(rev.map(e => [String(e.name||'').toLowerCase(), e]));
+    const rows = targets.map(t => {
+      const name = t.store || t.toko || t.name || '-';
+      const target = Number(t.target || t.target_revenue || 0);
+      const actual = actualMap[String(name).toLowerCase()]?.revenue || 0;
+      const pct = target ? (actual/target*100) : 0;
+      const color = pct >= 100 ? '#16a34a' : pct >= 80 ? '#f59e0b' : '#dc2626';
+      return `<tr>
+        <td class="strong">${escapeHtml(String(name))}</td>
+        <td class="right">${fmtRpShort(target)}</td>
+        <td class="right">${fmtRpShort(actual)}</td>
+        <td class="right" style="color:${color};font-weight:600;">${pct.toFixed(1)}%</td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = `<div class="card"><div class="card-header"><div class="card-title">Target vs Actual</div></div>
+      <div class="table-wrap" style="max-height:560px;overflow:auto;">
+        <table class="data"><thead><tr>
+          <th>Toko</th><th class="right">Target</th><th class="right">Actual</th><th class="right">Achievement</th>
+        </tr></thead><tbody>${rows}</tbody></table>
+      </div></div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ============ REFUND (lazy fetch) ============
+async function renderRefund() {
+  const wrap = document.getElementById('refundContent');
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat refund...</div>';
+  try {
+    const year = (state.from || '').slice(0,4) || String(new Date().getFullYear());
+    const data = await fetchAPI(`/api/sales/refunds?year=${year}&channel=retail`);
+    const summary = data.summary || data.total || {};
+    const byStore = data.by_store || data.byStore || [];
+    const bySpg = data.by_spg || data.bySpg || [];
+    const byArea = data.by_area || data.byArea || [];
+
+    const render = () => {
+      const rows = (arr, keyName = 'name') => (arr || []).slice(0, 50).map(r => `<tr>
+        <td class="strong">${escapeHtml(String(r[keyName] || r.store || r.spg || r.area || '-'))}</td>
+        <td class="right">${fmtNum(r.refund_count || r.count || r.qty || 0)}</td>
+        <td class="right strong">${fmtRpShort(r.refund_amount || r.amount || r.revenue || 0)}</td>
+      </tr>`).join('');
+
+      wrap.innerHTML = `
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+          <div class="kpi-card kpi-primary"><div class="kpi-label">Total Refund Rp</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(summary.total_amount || summary.amount || 0)}</span></span></div>
+          <div class="kpi-card"><div class="kpi-label">Qty Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.total_qty || summary.qty || 0)}</span></span></div>
+          <div class="kpi-card"><div class="kpi-label">Jumlah Transaksi</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.count || summary.total_count || 0)}</span></span></div>
+          <div class="kpi-card"><div class="kpi-label">Toko Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum((byStore||[]).length)}</span></span></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><div class="card-header"><div class="card-title">Top Toko Refund</div></div>
+            <div class="table-wrap" style="max-height:340px;overflow:auto;"><table class="data"><thead><tr><th>Toko</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead><tbody>${rows(byStore, 'store') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">—</td></tr>'}</tbody></table></div>
+          </div>
+          <div class="card"><div class="card-header"><div class="card-title">Top SPG Refund</div></div>
+            <div class="table-wrap" style="max-height:340px;overflow:auto;"><table class="data"><thead><tr><th>SPG</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead><tbody>${rows(bySpg, 'spg') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">—</td></tr>'}</tbody></table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Per Area</div></div>
+          <div class="table-wrap" style="max-height:260px;overflow:auto;"><table class="data"><thead><tr><th>Area</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead><tbody>${rows(byArea, 'area') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">—</td></tr>'}</tbody></table></div>
+        </div>`;
+    };
+    render();
+  } catch (e) {
+    wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/sales/refunds: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
 // ============ MAIN PIPELINE ============
 function showStatus(text, kind) {
   const el = document.getElementById('statusBar');
@@ -1518,6 +1894,11 @@ function renderActiveTab(data) {
     else if (tab === 'outlet') renderOutlet(data);
     else if (tab === 'produk') renderProduk(data);
     else if (tab === 'trend') renderTrend(data);
+    else if (tab === 'hourly') renderHourly(data);
+    else if (tab === 'spg') renderSpg(data);
+    else if (tab === 'promo') renderPromo(data);
+    else if (tab === 'target') renderTarget();   // lazy fetch
+    else if (tab === 'refund') renderRefund();   // lazy fetch
   } catch (e) { console.error('renderActiveTab', tab, e); }
 }
 

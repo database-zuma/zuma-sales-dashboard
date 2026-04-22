@@ -1,0 +1,10 @@
+.DS_Store
+*.log
+.env
+.env.local
+node_modules/
+.vercel
+.idea/
+.vscode/
+*.bak
+*.tmp

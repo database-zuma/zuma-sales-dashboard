@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zuma Sales Analytics</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --accent: #00E273;
+  --accent-dark: #00c463;
+  --navy: #002A3A;
+  --bg: #fafafa;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --border-soft: #f1f5f9;
+  --muted: #f8fafc;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --fg-soft: #94a3b8;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 2px 6px rgba(0,0,0,0.05);
+  --radius: 3px;
+  --radius-sm: 2px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ======= TOP STRIP ======= */
+.top-strip { height: 4px; background: var(--accent); }
+
+/* ======= SHELL ======= */
+.shell { max-width: 1400px; margin: 0 auto; padding: 16px 20px 40px; }
+
+/* ======= HEADER ======= */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-bar { width: 4px; height: 22px; background: var(--accent); border-radius: 2px; }
+.brand-title { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; color: var(--fg); }
+.brand-sub { font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 1px; }
+
+.header-right { display: flex; align-items: center; gap: 8px; }
+.pill {
+  font-size: 10px; color: var(--fg-muted);
+  background: var(--muted); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.pill strong { color: var(--fg); font-weight: 600; }
+.btn-ghost {
+  font-size: 10px; color: var(--fg-muted);
+  background: var(--muted); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  transition: all 0.15s;
+}
+.btn-ghost:hover { background: #eef2f6; color: var(--fg); }
+.btn-ghost:disabled { opacity: 0.5; cursor: wait; }
+
+/* ======= FILTER BAR ======= */
+.filter-bar {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+}
+.filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.filter-group.flex { flex: 1; min-width: 100px; }
+.filter-label {
+  font-size: 9px; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.12em;
+}
+.filter-input, .filter-select {
+  font: inherit; font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--fg);
+  outline: none; cursor: pointer;
+  transition: border 0.15s;
+  min-width: 0;
+}
+.filter-input:focus, .filter-select:focus { border-color: var(--accent); }
+.filter-input[type="search"], .filter-input[type="text"] { cursor: text; }
+.btn-reset {
+  font-size: 11px; font-weight: 500;
+  padding: 5px 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer; color: var(--fg-muted);
+  transition: all 0.15s;
+}
+.btn-reset:hover { background: var(--muted); color: var(--fg); }
+
+.search-row {
+  display: flex; gap: 8px; margin-top: 8px; align-items: center;
+}
+.search-wrap { position: relative; flex: 1; }
+.search-wrap svg {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--fg-soft);
+}
+.search-wrap input {
+  width: 100%; font-size: 12px; padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card); outline: none;
+}
+.search-wrap input:focus { border-color: var(--accent); }
+.toggle-btn {
+  font-size: 11px; font-weight: 600; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--fg-muted); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.toggle-btn.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
+
+/* ======= TAB NAV ======= */
+.tab-nav {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 14px;
+}
+.tab-btn {
+  font: inherit; font-size: 12px; font-weight: 600;
+  padding: 8px 14px; margin-bottom: -2px;
+  background: transparent; border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--fg-muted); cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.tab-btn:hover { color: var(--fg); background: var(--muted); }
+.tab-btn.active {
+  color: var(--fg); border-bottom-color: var(--accent); background: var(--card);
+}
+
+/* ======= TAB CONTENT ======= */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ======= KPI GRID ======= */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.kpi-label {
+  font-size: 9px; font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+.kpi-value {
+  font-size: 15px; font-weight: 700;
+  color: var(--fg); letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-sub { font-size: 10px; color: var(--fg-soft); font-variant-numeric: tabular-nums; }
+
+/* ======= CARD ======= */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.card-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.card-title {
+  font-size: 10px; font-weight: 700;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+.card-body { padding: 14px; }
+
+/* ======= GRID LAYOUT ======= */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.grid-2-wide { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 14px; }
+
+@media (max-width: 900px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .grid-2, .grid-2-wide { grid-template-columns: 1fr; }
+}
+
+/* ======= TABLE ======= */
+.table-wrap { overflow-x: auto; }
+table.data {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+table.data thead tr { background: var(--muted); border-bottom: 1px solid var(--border); }
+table.data th {
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--fg-muted);
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+table.data th.right { text-align: right; }
+table.data th.center { text-align: center; }
+table.data td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+table.data td.right { text-align: right; font-variant-numeric: tabular-nums; }
+table.data td.center { text-align: center; font-variant-numeric: tabular-nums; }
+table.data td.muted { color: var(--fg-muted); }
+table.data td.strong { font-weight: 500; color: var(--fg); }
+table.data tbody tr:hover { background: var(--muted); }
+table.data tfoot tr {
+  background: var(--muted);
+  border-top: 2px solid var(--accent);
+}
+table.data tfoot td {
+  font-weight: 700; color: var(--fg);
+  padding: 10px;
+}
+
+/* ======= PAGINATION ======= */
+.pagination {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; color: var(--fg-muted);
+}
+.pagination button {
+  font-size: 10px; font-weight: 600;
+  padding: 4px 10px; border: 1px solid var(--border);
+  background: var(--card); border-radius: var(--radius-sm);
+  cursor: pointer; color: var(--fg); display: inline-flex; align-items: center; gap: 4px;
+}
+.pagination button:hover:not(:disabled) { background: var(--muted); }
+.pagination button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ======= CHART ======= */
+.chart-box { position: relative; height: 240px; }
+
+/* ======= LOADING ======= */
+.loading {
+  padding: 40px 20px; text-align: center;
+  color: var(--fg-muted); font-size: 12px;
+}
+.spinner {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty {
+  padding: 60px 20px; text-align: center;
+  color: var(--fg-muted); font-size: 12px;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  margin: 20px 0;
+}
+.empty-icon { font-size: 24px; opacity: 0.4; margin-bottom: 8px; }
+
+.alert-error {
+  background: #fef2f2; border: 1px solid #fecaca;
+  color: #991b1b; padding: 10px 14px;
+  border-radius: var(--radius-sm); font-size: 12px;
+  margin-bottom: 12px;
+}
+
+/* ======= FOOTER ======= */
+.footer {
+  display: flex; align-items: center; gap: 8px;
+  padding-top: 16px; margin-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--fg-muted);
+}
+.footer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+/* Share bar mini (for table cells) */
+.share-bar {
+  height: 3px; background: var(--accent);
+  border-radius: 1px; margin-top: 2px;
+  opacity: 0.6;
+}
+</style>
+</head>
+<body>
+
+<div class="top-strip"></div>
+
+<div class="shell">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-bar"></div>
+      <div>
+        <div class="brand-title">Zuma Sales Analytics</div>
+        <div class="brand-sub">Omnichannel POS · Retail · Online · Consignment · Wholesale</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn-ghost" id="btnRefresh" title="Refresh data">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 0 1-10.38 2.5M2.5 8a5.5 5.5 0 0 1 10.38-2.5"/><path d="M13.5 3v3.5H10M2.5 13v-3.5H6" stroke-linejoin="round"/></svg>
+        Refresh
+      </button>
+      <span class="pill">Last Update: <strong id="lastUpdate">—</strong></span>
+    </div>
+  </header>
+
+  <!-- FILTER BAR -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label class="filter-label" for="fPeriodeMulai">Periode Mulai</label>
+      <input type="date" id="fPeriodeMulai" class="filter-input">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label" for="fPeriodeAkhir">Periode Akhir</label>
+      <input type="date" id="fPeriodeAkhir" class="filter-input">
+    </div>
+    <div class="filter-group flex">
+      <label class="filter-label" for="fChannel">Channel</label>
+      <select id="fChannel" class="filter-select">
+        <option value="global">🌍 Global</option>
+        <option value="retail">🏪 Retail</option>
+        <option value="online">🌐 Online</option>
+        <option value="consig">📦 Consignment</option>
+        <option value="wholesale">🏭 Wholesale</option>
+      </select>
+    </div>
+    <div class="filter-group flex">
+      <label class="filter-label" for="fArea">Area</label>
+      <select id="fArea" class="filter-select"><option value="">Semua</option></select>
+    </div>
+    <div class="filter-group flex">
+      <label class="filter-label" for="fStore">Toko</label>
+      <select id="fStore" class="filter-select"><option value="">Semua</option></select>
+    </div>
+    <div class="filter-group flex">
+      <label class="filter-label" for="fGender">Gender</label>
+      <select id="fGender" class="filter-select">
+        <option value="">Semua</option>
+        <option value="MEN">Men</option>
+        <option value="LADIES">Ladies</option>
+        <option value="KIDS">Kids</option>
+        <option value="BOYS">Boys</option>
+        <option value="GIRLS">Girls</option>
+        <option value="BABY">Baby</option>
+        <option value="JUNIOR">Junior</option>
+      </select>
+    </div>
+    <div class="filter-group flex">
+      <label class="filter-label" for="fSeries">Series</label>
+      <select id="fSeries" class="filter-select"><option value="">Semua</option></select>
+    </div>
+    <div class="filter-group flex">
+      <label class="filter-label" for="fTier">Tier</label>
+      <select id="fTier" class="filter-select"><option value="">Semua</option></select>
+    </div>
+    <button class="btn-reset" id="btnReset">Reset</button>
+
+    <div class="search-row" style="width:100%;">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
+        <input type="text" id="fSearch" placeholder="Cari SKU, artikel, kode... (Enter untuk cari)">
+      </div>
+      <button class="toggle-btn" id="btnSkuOnly">SKU Only: OFF</button>
+    </div>
+  </div>
+
+  <!-- TAB NAV -->
+  <nav class="tab-nav" id="tabNav">
+    <button class="tab-btn active" data-tab="executive">Executive</button>
+    <button class="tab-btn" data-tab="outlet">Outlet</button>
+    <button class="tab-btn" data-tab="produk">Produk</button>
+    <button class="tab-btn" data-tab="trend">Trend</button>
+    <button class="tab-btn" data-tab="hourly">Hourly</button>
+    <button class="tab-btn" data-tab="spg">SPG</button>
+    <button class="tab-btn" data-tab="target">Target</button>
+    <button class="tab-btn" data-tab="refund">Refund</button>
+    <button class="tab-btn" data-tab="promo">Promo</button>
+  </nav>
+
+  <!-- GLOBAL ERROR -->
+  <div id="globalError" style="display:none;"></div>
+
+  <!-- ========= TAB: EXECUTIVE ========= -->
+  <section class="tab-content active" id="tab-executive">
+
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card"><div class="kpi-label">Omzet</div><div class="kpi-value" id="kpiOmzet">—</div><div class="kpi-sub" id="kpiOmzetSub">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Pairs</div><div class="kpi-value" id="kpiPairs">—</div><div class="kpi-sub" id="kpiPairsSub">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Transaksi</div><div class="kpi-value" id="kpiTrx">—</div><div class="kpi-sub" id="kpiTrxSub">&nbsp;</div></div>
+      <div class="kpi-card" title="Unit per Transaction = Pairs / Transactions"><div class="kpi-label">UPT</div><div class="kpi-value" id="kpiUpt">—</div><div class="kpi-sub">unit / txn</div></div>
+      <div class="kpi-card" title="Avg Selling Price = Revenue / Pairs"><div class="kpi-label">ASP</div><div class="kpi-value" id="kpiAsp">—</div><div class="kpi-sub">Rp / pair</div></div>
+      <div class="kpi-card" title="Avg Transaction Value = Revenue / Transactions"><div class="kpi-label">ATV</div><div class="kpi-value" id="kpiAtv">—</div><div class="kpi-sub">Rp / txn</div></div>
+    </div>
+
+    <div class="grid-2-wide">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Sales Over Time</div>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-ghost" data-trend-granularity="day">Daily</button>
+            <button class="btn-ghost" data-trend-granularity="month">Monthly</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span id="contribTitle">Sales Contribution</span></div>
+        </div>
+        <div class="card-body">
+          <div class="chart-box" style="height:170px;"><canvas id="chartContrib"></canvas></div>
+          <div id="contribTable" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="card-title"><span id="performanceTitle">Store Performance</span></div>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-ghost" id="btnCsv">CSV</button>
+            <button class="btn-ghost" id="btnXlsx">XLSX</button>
+          </div>
+        </div>
+        <span class="pill" id="performanceMeta">—</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data" id="performanceTable">
+          <thead><tr id="performanceHead"></tr></thead>
+          <tbody id="performanceBody"><tr><td colspan="10" class="loading"><div class="spinner"></div>Memuat data...</td></tr></tbody>
+          <tfoot id="performanceFoot"></tfoot>
+        </table>
+      </div>
+      <div class="pagination" id="performancePagination"></div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: OUTLET ========= -->
+  <section class="tab-content" id="tab-outlet">
+    <div class="empty">
+      <div class="empty-icon">🏬</div>
+      <div>Outlet detail — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Full outlet/MP/partner/customer breakdown dengan metrik UPT/ASP/ATV per baris.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: PRODUK ========= -->
+  <section class="tab-content" id="tab-produk">
+    <div class="empty">
+      <div class="empty-icon">👕</div>
+      <div>Produk analysis — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Top SKU, breakdown Gender/Series/Tier/Tipe, size distribution.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: TREND ========= -->
+  <section class="tab-content" id="tab-trend">
+    <div class="empty">
+      <div class="empty-icon">📈</div>
+      <div>Trend analysis — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Daily / Monthly / YoY comparison.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: HOURLY ========= -->
+  <section class="tab-content" id="tab-hourly">
+    <div class="empty">
+      <div class="empty-icon">⏰</div>
+      <div>Hourly heatmap — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Jam × Hari heatmap, peak hours, store comparison.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: SPG ========= -->
+  <section class="tab-content" id="tab-spg">
+    <div class="empty">
+      <div class="empty-icon">👥</div>
+      <div>SPG performance — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Leaderboard, UPT/ATV per SPG, rata-rata harian.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: TARGET ========= -->
+  <section class="tab-content" id="tab-target">
+    <div class="empty">
+      <div class="empty-icon">🎯</div>
+      <div>Target vs Actual — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Achievement %, MTD trajectory, gap analysis.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: REFUND ========= -->
+  <section class="tab-content" id="tab-refund">
+    <div class="empty">
+      <div class="empty-icon">🔄</div>
+      <div>Refund monitor — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Refund rate per toko/SPG, reason breakdown, anomaly.</div>
+    </div>
+  </section>
+
+  <!-- ========= TAB: PROMO ========= -->
+  <section class="tab-content" id="tab-promo">
+    <div class="empty">
+      <div class="empty-icon">🏷️</div>
+      <div>Promo monitoring — coming soon.</div>
+      <div style="margin-top:4px;font-size:10px;">Total diskon Rp, % dari omzet, breakdown 9 dimensi (Channel/Area/Toko/SPG/SKU/Gender/Series/Tier/Version), anomaly alerts.</div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-dot"></div>
+    Zuma Indonesia · Sales Analytics · v0.1
+  </footer>
+
+</div>
+
+<script>
+// ============ CONSTANTS ============
+const API_BASE = 'https://srv1346756.hstgr.cloud';
+const API_KEY = '97d25067-a2ca-44ba-ac5b-61539b627271';
+
+// ============ STATE ============
+const state = {
+  channel: 'global',
+  from: null,
+  to: null,
+  area: '',
+  store: '',
+  gender: '',
+  series: '',
+  tier: '',
+  search: '',
+  skuOnly: false,
+  trendGranularity: 'day',
+  page: 1,
+  pageSize: 10,
+  rawData: [],     // sales rows for selected channel
+  lastUpdate: null,
+};
+
+const cache = { global: null, retail: null, online: null, consig: null, wholesale: null };
+
+// ============ FETCH ============
+async function fetchAPI(path) {
+  const res = await fetch(API_BASE + path, { headers: { 'X-API-Key': API_KEY } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function loadChannel(channel, from, to) {
+  // Single-call strategy: detail endpoint per channel with date range.
+  // Consignment has a different endpoint shape.
+  if (cache[channel]) return cache[channel];
+  let rows;
+  try {
+    if (channel === 'consig') {
+      const data = await fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`);
+      // Consignment endpoint returns a structured object; we flatten detail (best-effort)
+      rows = (data.detail || data.transactions || []).map(r => ({
+        date: r.date || r.order_date,
+        store: r.store_name || r.store,
+        area: r.area,
+        partner: r.partner,
+        sku: r.sku,
+        product_name: r.product_name || r.nama_barang,
+        gender: r.gender,
+        series: r.series,
+        tier: r.tier,
+        qty: Number(r.qty || 0),
+        price: Number(r.price || 0),
+        total: Number(r.total || 0),
+        channel: 'consig',
+      }));
+    } else if (channel === 'global') {
+      // Global = union of retail + online + wholesale + consig
+      const [retail, online, wholesale, consig] = await Promise.all([
+        fetchAPI(`/api/sales/detail?channel=retail&from=${from}&to=${to}`).catch(() => []),
+        fetchAPI(`/api/sales/detail?channel=online&from=${from}&to=${to}`).catch(() => []),
+        fetchAPI(`/api/sales/detail?channel=wholesale&from=${from}&to=${to}`).catch(() => []),
+        fetchAPI(`/api/sales/consignment?from=${from}&to=${to}`).catch(() => ({ detail: [] })),
+      ]);
+      const consigRows = (consig.detail || []).map(r => ({ ...r, channel: 'consig' }));
+      rows = [
+        ...retail.map(r => ({ ...r, channel: 'retail' })),
+        ...online.map(r => ({ ...r, channel: 'online' })),
+        ...wholesale.map(r => ({ ...r, channel: 'wholesale' })),
+        ...consigRows,
+      ];
+    } else {
+      // retail / online / wholesale
+      rows = await fetchAPI(`/api/sales/detail?channel=${channel}&from=${from}&to=${to}`);
+      rows = (rows || []).map(r => ({ ...r, channel }));
+    }
+  } catch (e) {
+    console.error('loadChannel error:', e);
+    throw e;
+  }
+  cache[channel] = rows;
+  return rows;
+}
+
+// ============ UTIL ============
+const fmtRp = n => 'Rp ' + (Number(n)||0).toLocaleString('id-ID');
+const fmtRpShort = n => {
+  n = Number(n) || 0;
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return 'Rp ' + (n/1e12).toFixed(1) + 'T';
+  if (abs >= 1e9)  return 'Rp ' + (n/1e9).toFixed(1) + 'M';
+  if (abs >= 1e6)  return 'Rp ' + (n/1e6).toFixed(1) + 'jt';
+  if (abs >= 1e3)  return 'Rp ' + (n/1e3).toFixed(0) + 'rb';
+  return 'Rp ' + n.toLocaleString('id-ID');
+};
+const fmtNum = n => (Number(n)||0).toLocaleString('id-ID');
+const fmtPct = (n, d = 1) => (Number(n)||0).toFixed(d) + '%';
+const todayStr = () => new Date().toISOString().slice(0,10);
+const firstOfYear = () => new Date().getFullYear() + '-01-01';
+
+// Label for the PERFORMANCE TABLE rows
+function entityLabel(channel) {
+  switch (channel) {
+    case 'online': return 'Marketplace';
+    case 'consig': return 'Partner';
+    case 'wholesale': return 'Customer';
+    case 'global': return 'Channel';
+    default: return 'Toko';
+  }
+}
+
+// Label for the FILTER dropdown (always "Toko" level, never "Channel" to avoid confusion)
+function filterEntityLabel(channel) {
+  switch (channel) {
+    case 'online': return 'Marketplace';
+    case 'consig': return 'Partner';
+    case 'wholesale': return 'Customer';
+    default: return 'Toko';
+  }
+}
+
+function getEntityKey(r, channel) {
+  if (channel === 'online') return r.store || r.marketplace || r.customer || '-';
+  if (channel === 'consig') return r.partner || r.store || '-';
+  if (channel === 'wholesale') return r.customer || r.store || '-';
+  if (channel === 'global') return (r.channel || '-').toUpperCase();
+  return r.store || '-';
+}
+
+// Filter uses actual store/MP/partner/customer name (not channel roll-up)
+function getFilterEntityKey(r, channel) {
+  if (channel === 'online') return r.store || r.marketplace || '-';
+  if (channel === 'consig') return r.partner || r.store || '-';
+  if (channel === 'wholesale') return r.customer || r.store || '-';
+  if (channel === 'global') return r.store || r.customer || r.partner || r.marketplace || '-';
+  return r.store || '-';
+}
+
+function getArea(r) {
+  return r.area && String(r.area).trim() ? r.area : '-';
+}
+
+// ============ FILTERING ============
+function applyFilters(rows) {
+  const s = state;
+  return rows.filter(r => {
+    if (s.area && getArea(r) !== s.area) return false;
+    if (s.store) {
+      const ent = getFilterEntityKey(r, s.channel);
+      if (ent !== s.store) return false;
+    }
+    if (s.gender && String(r.gender||'').toUpperCase() !== s.gender) return false;
+    if (s.series && String(r.series||'') !== s.series) return false;
+    if (s.tier && String(r.tier||'') !== s.tier) return false;
+    if (s.search) {
+      const q = s.search.toLowerCase();
+      const hay = [r.sku, r.kode_kecil, r.kode_besar, r.kode_mix, r.product_name, r.nama_barang].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ============ AGGREGATE ============
+function aggregate(rows) {
+  const txnSet = new Set();
+  let revenue = 0, pairs = 0, discount = 0, grossPrice = 0;
+  rows.forEach(r => {
+    const q = Number(r.qty)||0;
+    const total = Number(r.total)||0;
+    const price = Number(r.price)||0;
+    revenue += total;
+    pairs += q;
+    grossPrice += price * q;
+    discount += Math.max(0, price*q - total);
+    if (r.order_no) txnSet.add(r.order_no);
+  });
+  const transactions = txnSet.size || 0;
+  return {
+    revenue, pairs, transactions, discount, grossPrice,
+    upt: transactions ? pairs / transactions : 0,
+    asp: pairs ? revenue / pairs : 0,
+    atv: transactions ? revenue / transactions : 0,
+    discountPct: grossPrice ? (discount / grossPrice) * 100 : 0,
+  };
+}
+
+// ============ POPULATE FILTERS ============
+function populateFilters(rows) {
+  const areaSet = new Set(), storeSet = new Set(), seriesSet = new Set(), tierSet = new Set();
+  rows.forEach(r => {
+    const a = getArea(r);
+    const s = getFilterEntityKey(r, state.channel);
+    if (a && a !== '-') areaSet.add(a);
+    if (s && s !== '-') storeSet.add(s);
+    if (r.series) seriesSet.add(String(r.series));
+    if (r.tier) tierSet.add(String(r.tier));
+  });
+
+  const fill = (id, values, label) => {
+    const el = document.getElementById(id);
+    const prev = el.value;
+    el.innerHTML = `<option value="">${label}</option>` + values.sort().map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (values.includes(prev)) el.value = prev;
+  };
+
+  fill('fArea', [...areaSet], 'Semua Area');
+  fill('fStore', [...storeSet], 'Semua ' + filterEntityLabel(state.channel));
+  fill('fSeries', [...seriesSet], 'Semua Series');
+  fill('fTier', [...tierSet].sort((a,b) => {
+    const na = Number(a), nb = Number(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  }), 'Semua Tier');
+
+  // Update entity label next to Store dropdown (never shows "Channel" to avoid confusion with channel picker)
+  const storeLabel = document.querySelector('label[for="fStore"]');
+  if (storeLabel) storeLabel.textContent = filterEntityLabel(state.channel);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ============ RENDER EXECUTIVE ============
+let chartTrendInstance = null;
+let chartContribInstance = null;
+
+function renderExecutive(rows) {
+  const agg = aggregate(rows);
+
+  // KPI cards
+  document.getElementById('kpiOmzet').textContent = fmtRpShort(agg.revenue);
+  document.getElementById('kpiOmzetSub').textContent = fmtRp(agg.revenue);
+  document.getElementById('kpiPairs').textContent = fmtNum(agg.pairs);
+  document.getElementById('kpiPairsSub').textContent = 'pairs';
+  document.getElementById('kpiTrx').textContent = fmtNum(agg.transactions);
+  document.getElementById('kpiTrxSub').textContent = 'transaksi';
+  document.getElementById('kpiUpt').textContent = agg.upt.toFixed(2);
+  document.getElementById('kpiAsp').textContent = fmtRpShort(agg.asp);
+  document.getElementById('kpiAtv').textContent = fmtRpShort(agg.atv);
+
+  renderTrendChart(rows);
+  renderContribChart(rows);
+  renderPerformanceTable(rows);
+}
+
+function renderTrendChart(rows) {
+  const byBucket = {};
+  const gran = state.trendGranularity;
+  rows.forEach(r => {
+    const d = (r.date || '').slice(0,10);
+    if (!d) return;
+    const key = gran === 'month' ? d.slice(0,7) : d;
+    if (!byBucket[key]) byBucket[key] = { revenue: 0, pairs: 0 };
+    byBucket[key].revenue += Number(r.total)||0;
+    byBucket[key].pairs += Number(r.qty)||0;
+  });
+  const keys = Object.keys(byBucket).sort();
+  const revenues = keys.map(k => byBucket[k].revenue);
+
+  const ctx = document.getElementById('chartTrend').getContext('2d');
+  if (chartTrendInstance) chartTrendInstance.destroy();
+  chartTrendInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: keys,
+      datasets: [{
+        data: revenues,
+        borderColor: '#00E273',
+        backgroundColor: 'rgba(0,226,115,0.08)',
+        borderWidth: 2,
+        tension: 0.25,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#002A3A', padding: 8, titleFont:{size:11}, bodyFont:{size:11},
+          callbacks: {
+            label: ctx => fmtRp(ctx.parsed.y),
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748b', maxTicksLimit: 10 } },
+        y: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b', callback: v => fmtRpShort(v) } }
+      }
+    }
+  });
+}
+
+function renderContribChart(rows) {
+  const channel = state.channel;
+  const groupBy = channel === 'global' ? 'channel' : 'area';
+  const agg = {};
+  rows.forEach(r => {
+    const key = groupBy === 'channel'
+      ? (r.channel || '-').toUpperCase()
+      : getArea(r);
+    if (!agg[key]) agg[key] = { revenue: 0, pairs: 0 };
+    agg[key].revenue += Number(r.total)||0;
+    agg[key].pairs += Number(r.qty)||0;
+  });
+  const sorted = Object.entries(agg)
+    .sort((a,b) => b[1].revenue - a[1].revenue);
+  const total = sorted.reduce((s, [,v]) => s + v.revenue, 0) || 1;
+
+  const labels = sorted.map(([k]) => k);
+  const values = sorted.map(([,v]) => v.revenue);
+  const palette = ['#00E273', '#002A3A', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#10b981', '#f43f5e', '#64748b'];
+
+  const titleMap = { global: 'Contribution by Channel', retail: 'Contribution by Area', online: 'Contribution by Area', consig: 'Contribution by Area', wholesale: 'Contribution by Area' };
+  document.getElementById('contribTitle').textContent = titleMap[channel] || 'Sales Contribution';
+
+  const ctx = document.getElementById('chartContrib').getContext('2d');
+  if (chartContribInstance) chartContribInstance.destroy();
+  chartContribInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: labels.map((_, i) => palette[i % palette.length]),
+        borderColor: '#fff',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#002A3A', padding: 8, titleFont:{size:11}, bodyFont:{size:11},
+          callbacks: {
+            label: ctx => `${ctx.label}: ${fmtRpShort(ctx.parsed)} (${(ctx.parsed/total*100).toFixed(1)}%)`
+          }
+        }
+      }
+    }
+  });
+
+  // Contribution table
+  const html = `<table class="data" style="border-top:1px solid var(--border-soft);">
+    <thead><tr>
+      <th style="width:12px;"></th>
+      <th>${groupBy === 'channel' ? 'Channel' : 'Area'}</th>
+      <th class="right">Revenue</th>
+      <th class="right">Share</th>
+    </tr></thead>
+    <tbody>
+      ${sorted.map(([k, v], i) => `
+        <tr>
+          <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${palette[i%palette.length]};"></span></td>
+          <td class="strong">${escapeHtml(k)}</td>
+          <td class="right">${fmtRpShort(v.revenue)}</td>
+          <td class="right muted">${(v.revenue/total*100).toFixed(1)}%</td>
+        </tr>`).join('')}
+    </tbody>
+  </table>`;
+  document.getElementById('contribTable').innerHTML = html;
+}
+
+function renderPerformanceTable(rows) {
+  const channel = state.channel;
+  const entityKey = (r) => getEntityKey(r, channel);
+
+  const agg = {};
+  rows.forEach(r => {
+    const k = entityKey(r);
+    if (!agg[k]) agg[k] = { entity: k, area: getArea(r), qty: 0, revenue: 0, trxSet: new Set() };
+    agg[k].qty += Number(r.qty)||0;
+    agg[k].revenue += Number(r.total)||0;
+    if (r.order_no) agg[k].trxSet.add(r.order_no);
+  });
+  const list = Object.values(agg).map(a => ({
+    entity: a.entity,
+    area: a.area,
+    qty: a.qty,
+    revenue: a.revenue,
+    trx: a.trxSet.size,
+    upt: a.trxSet.size ? a.qty / a.trxSet.size : 0,
+    asp: a.qty ? a.revenue / a.qty : 0,
+    atv: a.trxSet.size ? a.revenue / a.trxSet.size : 0,
+  })).sort((a,b) => b.revenue - a.revenue);
+
+  const label = entityLabel(channel);
+  document.getElementById('performanceTitle').textContent = `${label} Performance`;
+
+  const head = `
+    <th class="center" style="width:30px;">#</th>
+    <th>${label}</th>
+    <th>Area</th>
+    <th class="right">Qty</th>
+    <th class="right">Revenue</th>
+    <th class="right">Txn</th>
+    <th class="right">UPT</th>
+    <th class="right">ASP</th>
+    <th class="right">ATV</th>`;
+  document.getElementById('performanceHead').innerHTML = head;
+
+  const total = list.reduce((a,c) => ({
+    qty: a.qty+c.qty, revenue: a.revenue+c.revenue, trx: a.trx+c.trx,
+  }), { qty:0, revenue:0, trx:0 });
+  const totUpt = total.trx ? total.qty/total.trx : 0;
+  const totAsp = total.qty ? total.revenue/total.qty : 0;
+  const totAtv = total.trx ? total.revenue/total.trx : 0;
+
+  // Pagination
+  const page = state.page;
+  const size = state.pageSize;
+  const pages = Math.max(1, Math.ceil(list.length / size));
+  const safePage = Math.min(page, pages);
+  state.page = safePage;
+  const slice = list.slice((safePage-1)*size, safePage*size);
+
+  if (!list.length) {
+    document.getElementById('performanceBody').innerHTML = `<tr><td colspan="9" class="empty" style="border:none;padding:32px;">Tidak ada data untuk periode ini.</td></tr>`;
+    document.getElementById('performanceFoot').innerHTML = '';
+    document.getElementById('performancePagination').innerHTML = '';
+    document.getElementById('performanceMeta').innerHTML = '0 ' + label.toLowerCase();
+    return;
+  }
+
+  const rowsHtml = slice.map((r, i) => `
+    <tr>
+      <td class="center muted">${(safePage-1)*size + i + 1}</td>
+      <td class="strong">${escapeHtml(r.entity)}</td>
+      <td class="muted">${escapeHtml(r.area)}</td>
+      <td class="right">${fmtNum(r.qty)}</td>
+      <td class="right strong">${fmtRpShort(r.revenue)}</td>
+      <td class="right muted">${fmtNum(r.trx)}</td>
+      <td class="right muted">${r.upt.toFixed(1)}</td>
+      <td class="right muted">${fmtRpShort(r.asp)}</td>
+      <td class="right muted">${fmtRpShort(r.atv)}</td>
+    </tr>`).join('');
+  document.getElementById('performanceBody').innerHTML = rowsHtml;
+
+  document.getElementById('performanceFoot').innerHTML = `
+    <tr>
+      <td class="center" colspan="3">TOTAL</td>
+      <td class="right">${fmtNum(total.qty)}</td>
+      <td class="right">${fmtRpShort(total.revenue)}</td>
+      <td class="right">${fmtNum(total.trx)}</td>
+      <td class="right">${totUpt.toFixed(1)}</td>
+      <td class="right">${fmtRpShort(totAsp)}</td>
+      <td class="right">${fmtRpShort(totAtv)}</td>
+    </tr>`;
+
+  document.getElementById('performanceMeta').innerHTML = `${list.length} ${label.toLowerCase()} · Page ${safePage}/${pages}`;
+
+  document.getElementById('performancePagination').innerHTML = `
+    <button id="pgPrev" ${safePage<=1?'disabled':''}>‹ Prev</button>
+    <span>Page ${safePage} of ${pages}</span>
+    <button id="pgNext" ${safePage>=pages?'disabled':''}>Next ›</button>`;
+  document.getElementById('pgPrev').onclick = () => { state.page = Math.max(1, safePage-1); renderPerformanceTable(rows); };
+  document.getElementById('pgNext').onclick = () => { state.page = Math.min(pages, safePage+1); renderPerformanceTable(rows); };
+
+  // CSV/XLSX export
+  document.getElementById('btnCsv').onclick = () => exportCsv(list, label);
+  document.getElementById('btnXlsx').onclick = () => exportCsv(list, label, true);
+}
+
+function exportCsv(list, label, xlsx) {
+  const header = ['#', label, 'Area', 'Qty', 'Revenue', 'Txn', 'UPT', 'ASP', 'ATV'];
+  const lines = [header.join(',')];
+  list.forEach((r, i) => {
+    lines.push([i+1, `"${r.entity}"`, `"${r.area}"`, r.qty, r.revenue, r.trx, r.upt.toFixed(2), r.asp.toFixed(0), r.atv.toFixed(0)].join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ext = xlsx ? 'csv' : 'csv'; // XLSX as CSV for MVP
+  a.href = url;
+  a.download = `sales-performance-${state.channel}-${state.from}-${state.to}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============ MAIN PIPELINE ============
+async function refresh({ reloadData = true } = {}) {
+  const btn = document.getElementById('btnRefresh');
+  try {
+    btn.disabled = true;
+    document.getElementById('globalError').style.display = 'none';
+    if (reloadData) {
+      // Invalidate cache for current channel if user forced refresh via button
+      const body = document.getElementById('performanceBody');
+      if (body) body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
+      const rows = await loadChannel(state.channel, state.from, state.to);
+      state.rawData = rows;
+      populateFilters(rows);
+    }
+    const filtered = applyFilters(state.rawData);
+    renderExecutive(filtered);
+    state.lastUpdate = new Date();
+    document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+  } catch (e) {
+    console.error(e);
+    document.getElementById('globalError').style.display = '';
+    document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(e.message)}. Cek koneksi API atau refresh lagi.</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ============ EVENTS ============
+function setupEvents() {
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    };
+  });
+
+  // Channel changes → invalidate + reload
+  document.getElementById('fChannel').onchange = (e) => {
+    state.channel = e.target.value;
+    state.page = 1;
+    state.area = ''; state.store = '';
+    document.getElementById('fArea').value = '';
+    document.getElementById('fStore').value = '';
+    refresh({ reloadData: true });
+  };
+
+  // Date changes → invalidate cache + reload
+  const onDateChange = () => {
+    state.from = document.getElementById('fPeriodeMulai').value;
+    state.to = document.getElementById('fPeriodeAkhir').value;
+    Object.keys(cache).forEach(k => cache[k] = null);
+    state.page = 1;
+    refresh({ reloadData: true });
+  };
+  document.getElementById('fPeriodeMulai').onchange = onDateChange;
+  document.getElementById('fPeriodeAkhir').onchange = onDateChange;
+
+  // Other filters → re-render only
+  ['fArea','fStore','fGender','fSeries','fTier'].forEach(id => {
+    document.getElementById(id).onchange = (e) => {
+      state[id.slice(1).toLowerCase()] = e.target.value;
+      state.page = 1;
+      refresh({ reloadData: false });
+    };
+  });
+
+  // Search
+  document.getElementById('fSearch').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      state.search = e.target.value.trim();
+      state.page = 1;
+      refresh({ reloadData: false });
+    }
+  });
+
+  // SKU Only toggle
+  document.getElementById('btnSkuOnly').onclick = (e) => {
+    state.skuOnly = !state.skuOnly;
+    e.target.classList.toggle('active', state.skuOnly);
+    e.target.textContent = 'SKU Only: ' + (state.skuOnly ? 'ON' : 'OFF');
+  };
+
+  // Reset
+  document.getElementById('btnReset').onclick = () => {
+    state.area = state.store = state.gender = state.series = state.tier = state.search = '';
+    state.skuOnly = false;
+    state.page = 1;
+    ['fArea','fStore','fGender','fSeries','fTier'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('fSearch').value = '';
+    const skuBtn = document.getElementById('btnSkuOnly');
+    skuBtn.classList.remove('active');
+    skuBtn.textContent = 'SKU Only: OFF';
+    refresh({ reloadData: false });
+  };
+
+  // Refresh button (force)
+  document.getElementById('btnRefresh').onclick = () => {
+    Object.keys(cache).forEach(k => cache[k] = null);
+    refresh({ reloadData: true });
+  };
+
+  // Trend granularity toggle
+  document.querySelectorAll('[data-trend-granularity]').forEach(btn => {
+    btn.onclick = () => {
+      state.trendGranularity = btn.dataset.trendGranularity;
+      renderTrendChart(applyFilters(state.rawData));
+    };
+  });
+}
+
+// ============ INIT ============
+function init() {
+  state.from = firstOfYear();
+  state.to = todayStr();
+  document.getElementById('fPeriodeMulai').value = state.from;
+  document.getElementById('fPeriodeMulai').max = state.to;
+  document.getElementById('fPeriodeAkhir').value = state.to;
+  document.getElementById('fPeriodeAkhir').max = state.to;
+  document.getElementById('fPeriodeAkhir').min = state.from;
+
+  setupEvents();
+  refresh({ reloadData: true });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

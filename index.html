@@ -581,24 +581,24 @@ table.data tfoot td {
           </table>
         </div>
       </div>
-      <div class="card"><div class="card-header"><div class="card-title">Per Gender</div></div>
+      <div class="card" id="cardProdukGender"><div class="card-header"><div class="card-title">Per Gender</div></div>
         <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukGender"></canvas></div></div>
       </div>
     </div>
     <div class="grid-2">
-      <div class="card"><div class="card-header"><div class="card-title">Per Series (Top 10)</div></div>
+      <div class="card" id="cardProdukSeries"><div class="card-header"><div class="card-title">Per Series (Top 10)</div></div>
         <div class="card-body"><div class="chart-box" style="height:220px;"><canvas id="chartProdukSeries"></canvas></div></div>
       </div>
-      <div class="card"><div class="card-header"><div class="card-title">Per Tier</div></div>
+      <div class="card" id="cardProdukTier"><div class="card-header"><div class="card-title">Per Tier</div></div>
         <div class="card-body"><div class="chart-box" style="height:220px;"><canvas id="chartProdukTier"></canvas></div></div>
       </div>
     </div>
     <div class="grid-2">
-      <div class="card"><div class="card-header"><div class="card-title">Per Tipe</div></div>
+      <div class="card" id="cardProdukTipe"><div class="card-header"><div class="card-title">Per Tipe</div></div>
         <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukTipe"></canvas></div></div>
       </div>
-      <div class="card"><div class="card-header"><div class="card-title">Distribusi Size</div></div>
-        <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukSize"></canvas></div></div>
+      <div class="card"><div class="card-header"><div class="card-title">Distribusi Size (ascending)</div></div>
+        <div class="card-body"><div class="chart-box" style="height:240px;"><canvas id="chartProdukSize"></canvas></div></div>
       </div>
     </div>
   </section>
@@ -750,7 +750,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.1 · build 2026-04-22 · sandal filter + size drilldown + teal headers</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.2 · build 2026-04-22 · filters wired + size sort + gender series label</span>
   </footer>
 
 </div>
@@ -856,10 +856,19 @@ function setProgress(key, state) {
 // Single pre-aggregated endpoint call. Returns a payload dict, not raw rows:
 //   { kpis, timeSeries, byChannel, byArea, byEntity, byGender, bySeries, byTier, byTipe, bySize, rankByArticle }
 async function loadChannel(channel, from, to) {
-  // Default behavior: SKU Only OFF → sandal only (exclude accessories)
-  // Toggle ON → include everything
-  const sandalOnly = !state.skuOnly;  // skuOnly=false → sandal (default); skuOnly=true → all
-  const cacheKey = `${channel}:${from}:${to}:s${sandalOnly?1:0}`;
+  const sandalOnly = !state.skuOnly;
+  // Collect active filters; include in cache key + URL params
+  const qs = new URLSearchParams({
+    channel, from, to,
+    sku_only: String(sandalOnly),
+  });
+  if (state.area)   qs.set('area', state.area);
+  if (state.store)  qs.set('store', state.store);
+  if (state.gender) qs.set('gender', state.gender);
+  if (state.series) qs.set('series', state.series);
+  if (state.tier)   qs.set('tier', state.tier);
+  if (state.search) qs.set('search', state.search);
+  const cacheKey = qs.toString();
   if (cache[cacheKey]) return cache[cacheKey];
   const cached = lsGet(cacheKey);
   if (cached) {
@@ -870,8 +879,7 @@ async function loadChannel(channel, from, to) {
   setProgress(channel, 'loading');
   const t0 = performance.now();
   try {
-    const url = `/api/sales/dashboard?channel=${channel}&from=${from}&to=${to}&sku_only=${sandalOnly}`;
-    const data = await fetchAPI(url);
+    const data = await fetchAPI('/api/sales/dashboard?' + qs.toString());
     const dt = Math.round((performance.now() - t0) / 100) / 10;
     setProgress(channel, { ok: true, dt });
     cache[cacheKey] = data;
@@ -1490,7 +1498,7 @@ function renderProduk(data) {
         callbacks: { label: c => `${c.label}: ${fmtNum(c.parsed)} pairs` } } }
   };
 
-  const renderChart = (id, dataArr, opts, type='bar', limit=10) => {
+  const renderChart = (id, dataArr, opts, type='bar', limit=10, singleColor=null) => {
     const slice = (dataArr || []).slice(0, limit);
     const ctx = document.getElementById(id).getContext('2d');
     if (produkCharts[id]) produkCharts[id].destroy();
@@ -1499,17 +1507,28 @@ function renderProduk(data) {
       data: {
         labels: slice.map(x => x.name),
         datasets: [{ data: slice.map(x => x.pairs),
-          backgroundColor: slice.map((_, i) => palette[i%palette.length]),
+          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map((_, i) => palette[i%palette.length]),
           borderColor: '#fff', borderWidth: type === 'doughnut' ? 2 : 0, borderRadius: 3 }]
       },
       options: opts,
     });
   };
-  renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12);
-  renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
-  renderChart('chartProdukTier', data.byTier || [], barOpts, 'bar', 10);
+
+  // Hide cards whose dimension is already filtered (redundant single-bar charts)
+  const toggleCard = (id, hide) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = hide ? 'none' : '';
+  };
+  toggleCard('cardProdukGender', !!state.gender);
+  toggleCard('cardProdukSeries', !!state.series);
+  toggleCard('cardProdukTier',   !!state.tier);
+
+  if (!state.gender) renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12);
+  if (!state.series) renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
+  if (!state.tier)   renderChart('chartProdukTier',   data.byTier   || [], barOpts, 'bar', 10);
   renderChart('chartProdukTipe', data.byTipe || [], pieOpts, 'doughnut', 10);
-  renderChart('chartProdukSize', data.bySize || [], barOpts, 'bar', 20);
+  // Size: single color, more rows, ordered (backend already sorts naturally ascending)
+  renderChart('chartProdukSize', data.bySize || [], barOpts, 'bar', 30, '#00E273');
 }
 
 // ============ RENDER TREND ============
@@ -2100,21 +2119,21 @@ function setupEvents() {
   document.getElementById('fPeriodeMulai').onchange = onDateChange;
   document.getElementById('fPeriodeAkhir').onchange = onDateChange;
 
-  // Other filters → re-render only
+  // Other filters → refetch (backend now handles filtering)
   ['fArea','fStore','fGender','fSeries','fTier'].forEach(id => {
     document.getElementById(id).onchange = (e) => {
       state[id.slice(1).toLowerCase()] = e.target.value;
       state.page = 1;
-      refresh({ reloadData: false });
+      refresh({ reloadData: true });
     };
   });
 
-  // Search
+  // Search — triggers refetch on Enter
   document.getElementById('fSearch').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       state.search = e.target.value.trim();
       state.page = 1;
-      refresh({ reloadData: false });
+      refresh({ reloadData: true });
     }
   });
 
@@ -2127,7 +2146,7 @@ function setupEvents() {
     refresh({ reloadData: true });
   };
 
-  // Reset
+  // Reset — clears filters and refetches
   document.getElementById('btnReset').onclick = () => {
     state.area = state.store = state.gender = state.series = state.tier = state.search = '';
     state.skuOnly = false;
@@ -2137,7 +2156,7 @@ function setupEvents() {
     const skuBtn = document.getElementById('btnSkuOnly');
     skuBtn.classList.remove('active');
     skuBtn.textContent = 'SKU Only: OFF';
-    refresh({ reloadData: false });
+    refresh({ reloadData: true });
   };
 
   // Refresh button (force — invalidates memory + localStorage cache)

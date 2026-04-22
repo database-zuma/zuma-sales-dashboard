@@ -596,7 +596,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.3 · build 2026-04-22</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.4 · build 2026-04-22</span>
   </footer>
 
 </div>
@@ -626,6 +626,32 @@ const state = {
 };
 
 const cache = { global: null, retail: null, online: null, consig: null, wholesale: null };
+
+// ============ LOCALSTORAGE CACHE (10min TTL) ============
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_PREFIX = 'zuma-sales-v1:';
+function lsGet(key) {
+  try {
+    const raw = localStorage.getItem(CACHE_PREFIX + key);
+    if (!raw) return null;
+    const { t, d } = JSON.parse(raw);
+    if (Date.now() - t > CACHE_TTL_MS) { localStorage.removeItem(CACHE_PREFIX + key); return null; }
+    return d;
+  } catch { return null; }
+}
+function lsSet(key, data) {
+  try {
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), d: data }));
+  } catch (e) {
+    // quota exceeded — ignore silently
+    console.warn('LS cache set failed:', e.message);
+  }
+}
+function lsInvalidate() {
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k));
+  } catch {}
+}
 
 // ============ FETCH (with timeout + clear errors) ============
 async function fetchAPI(path, { timeoutMs = 45000 } = {}) {
@@ -664,15 +690,38 @@ function normalizeConsigRow(r) {
   };
 }
 
+// per-endpoint progress snapshot used by loadChannel → refresh to update status bar
+const loadProgress = { _subs: new Set() };
+function setProgress(key, state) {
+  loadProgress[key] = state;
+  loadProgress._subs.forEach(cb => { try { cb(loadProgress); } catch {} });
+}
+
 async function loadChannel(channel, from, to) {
+  // in-memory cache first
   if (cache[channel]) return cache[channel];
+  // localStorage cache second
+  const lsKey = `${channel}:${from}:${to}`;
+  const cached = lsGet(lsKey);
+  if (cached) {
+    cache[channel] = cached;
+    cached._fromCache = true;
+    return cached;
+  }
+
   let rows;
   const errors = [];
   const trackedFetch = async (path, label) => {
+    const t0 = performance.now();
+    setProgress(label, 'loading');
     try {
-      return await fetchAPI(path);
+      const data = await fetchAPI(path);
+      const dt = Math.round((performance.now() - t0) / 100) / 10;
+      setProgress(label, { ok: true, dt });
+      return data;
     } catch (e) {
       errors.push(label + ': ' + e.message);
+      setProgress(label, { ok: false, err: e.message });
       console.warn(label, 'failed:', e.message);
       return null;
     }
@@ -704,12 +753,11 @@ async function loadChannel(channel, from, to) {
     throw e;
   }
   if (errors.length && rows.length === 0) {
-    // every endpoint failed — surface the first error so user sees WHAT broke
     throw new Error(errors.join(' | '));
   }
-  // partial failures: attach meta so UI can warn
   if (errors.length) rows._partialErrors = errors;
   cache[channel] = rows;
+  lsSet(lsKey, rows); // persist for next load
   return rows;
 }
 
@@ -1142,29 +1190,52 @@ function showStatus(text, kind) {
   el.textContent = text;
 }
 
+function formatProgress(p) {
+  const names = state.channel === 'global'
+    ? ['retail','online','wholesale','consig']
+    : [state.channel];
+  const emoji = (v) => {
+    if (v === 'loading' || v === undefined) return '⏳';
+    if (v && v.ok) return '✓ ' + v.dt + 's';
+    if (v && v.ok === false) return '✗';
+    return '·';
+  };
+  return names.map(n => `${n} ${emoji(p[n])}`).join(' · ');
+}
+
 async function refresh({ reloadData = true } = {}) {
   const btn = document.getElementById('btnRefresh');
+  // progress subscriber updates the status bar as each endpoint resolves
+  const progressHandler = (p) => {
+    showStatus(`⏳ Memuat (${state.from} → ${state.to})  ·  ${formatProgress(p)}`, 'loading');
+  };
   try {
     btn.disabled = true;
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
+      // reset progress map
+      ['retail','online','wholesale','consig'].forEach(k => delete loadProgress[k]);
+      loadProgress._subs.add(progressHandler);
+
       const body = document.getElementById('performanceBody');
       if (body) body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
       showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
+      const t0 = performance.now();
       const rows = await loadChannel(state.channel, state.from, state.to);
+      const dt = Math.round((performance.now() - t0) / 100) / 10;
       state.rawData = rows;
       populateFilters(rows);
       if (!rows || rows.length === 0) {
         showStatus(`⚠️ API OK tapi 0 baris data untuk channel "${state.channel}" di periode ${state.from} → ${state.to}. Coba pilih tanggal lain atau channel lain.`, 'warn');
       } else {
-        // breakdown by channel
         const chCount = {};
         rows.forEach(r => { const c = r.channel || '-'; chCount[c] = (chCount[c]||0)+1; });
         const summary = Object.entries(chCount).map(([k,v]) => `${k}: ${v.toLocaleString('id-ID')}`).join(' · ');
+        const source = rows._fromCache ? 'dari cache lokal (instant)' : `dari server (${dt}s)`;
         if (rows._partialErrors && rows._partialErrors.length) {
-          showStatus(`⚠️ ${rows.length.toLocaleString('id-ID')} baris dimuat (sebagian channel gagal: ${rows._partialErrors.join(' | ')}) — ${summary}`, 'warn');
+          showStatus(`⚠️ ${rows.length.toLocaleString('id-ID')} baris dimuat ${source} (sebagian channel gagal: ${rows._partialErrors.join(' | ')}) — ${summary}`, 'warn');
         } else {
-          showStatus(`✅ ${rows.length.toLocaleString('id-ID')} baris dimuat — ${summary}`, 'ok');
+          showStatus(`✅ ${rows.length.toLocaleString('id-ID')} baris ${source} — ${summary}`, 'ok');
           setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
         }
       }
@@ -1180,6 +1251,7 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(e.message)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
     btn.disabled = false;
+    loadProgress._subs.delete(progressHandler);
   }
 }
 
@@ -1254,9 +1326,10 @@ function setupEvents() {
     refresh({ reloadData: false });
   };
 
-  // Refresh button (force)
+  // Refresh button (force — invalidates memory + localStorage cache)
   document.getElementById('btnRefresh').onclick = () => {
     Object.keys(cache).forEach(k => cache[k] = null);
+    lsInvalidate();
     refresh({ reloadData: true });
   };
 

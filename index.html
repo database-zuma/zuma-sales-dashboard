@@ -460,6 +460,9 @@ table.data tfoot td {
   <!-- GLOBAL ERROR -->
   <div id="globalError" style="display:none;"></div>
 
+  <!-- STATUS BAR (shows load progress + row counts + errors for debugging) -->
+  <div id="statusBar" style="display:none; font-size:11px; padding:8px 14px; border-radius:var(--radius-sm); margin-bottom:10px;"></div>
+
   <!-- ========= TAB: EXECUTIVE ========= -->
   <section class="tab-content active" id="tab-executive">
 
@@ -1094,18 +1097,47 @@ function exportCsv(list, label, xlsx) {
 }
 
 // ============ MAIN PIPELINE ============
+function showStatus(text, kind) {
+  const el = document.getElementById('statusBar');
+  if (!el) return;
+  el.style.display = '';
+  const colors = {
+    info: { bg: '#f1f5f9', border: '#cbd5e1', color: '#334155' },
+    loading: { bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af' },
+    ok: { bg: '#f0fdf4', border: '#86efac', color: '#14532d' },
+    warn: { bg: '#fffbeb', border: '#fcd34d', color: '#92400e' },
+    error: { bg: '#fef2f2', border: '#fecaca', color: '#991b1b' },
+  };
+  const c = colors[kind] || colors.info;
+  el.style.background = c.bg;
+  el.style.border = '1px solid ' + c.border;
+  el.style.color = c.color;
+  el.textContent = text;
+}
+
 async function refresh({ reloadData = true } = {}) {
   const btn = document.getElementById('btnRefresh');
   try {
     btn.disabled = true;
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
-      // Invalidate cache for current channel if user forced refresh via button
       const body = document.getElementById('performanceBody');
       if (body) body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
+      showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
       const rows = await loadChannel(state.channel, state.from, state.to);
       state.rawData = rows;
       populateFilters(rows);
+      if (!rows || rows.length === 0) {
+        showStatus(`⚠️ API OK tapi 0 baris data untuk channel "${state.channel}" di periode ${state.from} → ${state.to}. Coba pilih tanggal lain atau channel lain.`, 'warn');
+      } else {
+        // breakdown by channel
+        const chCount = {};
+        rows.forEach(r => { const c = r.channel || '-'; chCount[c] = (chCount[c]||0)+1; });
+        const summary = Object.entries(chCount).map(([k,v]) => `${k}: ${v.toLocaleString('id-ID')}`).join(' · ');
+        showStatus(`✅ ${rows.length.toLocaleString('id-ID')} baris dimuat — ${summary}`, 'ok');
+        // auto-hide on success after 4s
+        setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
+      }
     }
     const filtered = applyFilters(state.rawData);
     renderExecutive(filtered);
@@ -1113,8 +1145,9 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
   } catch (e) {
     console.error(e);
+    showStatus(`❌ Gagal memuat: ${e.message}`, 'error');
     document.getElementById('globalError').style.display = '';
-    document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(e.message)}. Cek koneksi API atau refresh lagi.</div>`;
+    document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(e.message)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
     btn.disabled = false;
   }

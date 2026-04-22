@@ -409,15 +409,6 @@ table.data tfoot td {
       <label class="filter-label" for="fPeriodeAkhir">Periode Akhir</label>
       <input type="date" id="fPeriodeAkhir" class="filter-input">
     </div>
-    <div class="filter-group">
-      <label class="filter-label">Preset</label>
-      <div class="preset-bar">
-        <button class="preset-btn" data-preset="7d">7D</button>
-        <button class="preset-btn" data-preset="30d">30D</button>
-        <button class="preset-btn" data-preset="mtd">Bulan</button>
-        <button class="preset-btn" data-preset="ytd">YTD</button>
-      </div>
-    </div>
     <div class="filter-group flex">
       <label class="filter-label" for="fChannel">Channel</label>
       <select id="fChannel" class="filter-select">
@@ -620,7 +611,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.5 · build 2026-04-22</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.6 · build 2026-04-22</span>
   </footer>
 
 </div>
@@ -1406,18 +1397,13 @@ function applyPreset(key) {
 
 // ============ INIT ============
 function init() {
-  // default: last 7 days — fast initial load (~3k rows vs 75k for YTD)
-  const def = PRESETS['7d']();
-  state.from = def.from;
-  state.to = def.to;
+  state.from = firstOfYear();
+  state.to = todayStr();
   document.getElementById('fPeriodeMulai').value = state.from;
-  document.getElementById('fPeriodeMulai').max = todayStr();
+  document.getElementById('fPeriodeMulai').max = state.to;
   document.getElementById('fPeriodeAkhir').value = state.to;
-  document.getElementById('fPeriodeAkhir').max = todayStr();
+  document.getElementById('fPeriodeAkhir').max = state.to;
   document.getElementById('fPeriodeAkhir').min = state.from;
-  // mark preset 7d as active
-  const preset7 = document.querySelector('[data-preset="7d"]');
-  if (preset7) preset7.classList.add('active');
 
   setupEvents();
   refresh({ reloadData: true });

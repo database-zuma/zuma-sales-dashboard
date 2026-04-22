@@ -747,7 +747,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v0.9 · build 2026-04-22 · all 9 tabs</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.0 · build 2026-04-22 · all 9 tabs ✓</span>
   </footer>
 
 </div>
@@ -1730,33 +1730,96 @@ async function renderTarget() {
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target...</div>';
   try {
     const data = await fetchAPI('/api/targets');
-    const targets = Array.isArray(data) ? data : (data.targets || data.items || []);
+    // Response shape: { "store-key-1": {store, area, jan, feb, ..., des}, "store-key-2": {...}, ... }
+    // Or could be list — normalize to array.
+    const targets = Array.isArray(data)
+      ? data
+      : Object.values(data || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
+
     if (!targets.length) {
-      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:40px;">Endpoint /api/targets balik kosong. Backend belum populate data target atau format beda dari yang diharapkan. Cek DevTools → Network → /api/targets untuk payload sebenarnya.</div>';
+      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:40px;">Endpoint /api/targets balik kosong.</div>';
       return;
     }
-    // Render targets — format depends on backend, best-effort render
+
+    // Determine which months fall within [state.from, state.to]
+    const MONTH_KEYS = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
+    const fromD = new Date(state.from);
+    const toD   = new Date(state.to);
+    const fromMonth = fromD.getMonth();   // 0-11
+    const toMonth   = toD.getMonth();
+    const activeMonths = MONTH_KEYS.filter((_, i) => i >= fromMonth && i <= toMonth);
+
+    // Actual revenue map from current payload
     const rev = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
-    const actualMap = Object.fromEntries(rev.map(e => [String(e.name||'').toLowerCase(), e]));
-    const rows = targets.map(t => {
-      const name = t.store || t.toko || t.name || '-';
-      const target = Number(t.target || t.target_revenue || 0);
-      const actual = actualMap[String(name).toLowerCase()]?.revenue || 0;
-      const pct = target ? (actual/target*100) : 0;
-      const color = pct >= 100 ? '#16a34a' : pct >= 80 ? '#f59e0b' : '#dc2626';
-      return `<tr>
-        <td class="strong">${escapeHtml(String(name))}</td>
-        <td class="right">${fmtRpShort(target)}</td>
-        <td class="right">${fmtRpShort(actual)}</td>
-        <td class="right" style="color:${color};font-weight:600;">${pct.toFixed(1)}%</td>
+    const actualMap = {};
+    rev.forEach(e => {
+      actualMap[String(e.name || '').toLowerCase().trim()] = Number(e.revenue) || 0;
+    });
+
+    // Compute per-store target = sum of months in range
+    const enriched = targets.map(t => {
+      const storeName = t.store || t.toko || '-';
+      const area = t.area || '-';
+      const target = activeMonths.reduce((s, m) => s + (Number(t[m]) || 0), 0);
+      const actual = actualMap[String(storeName).toLowerCase().trim()] || 0;
+      const gap = actual - target;
+      const pct = target ? (actual / target * 100) : 0;
+      return { storeName, area, target, actual, gap, pct };
+    }).filter(r => r.target > 0 || r.actual > 0);
+
+    enriched.sort((a, b) => b.target - a.target);
+
+    // Summary KPIs
+    const totTarget = enriched.reduce((s, r) => s + r.target, 0);
+    const totActual = enriched.reduce((s, r) => s + r.actual, 0);
+    const totGap    = totActual - totTarget;
+    const totPct    = totTarget ? (totActual / totTarget * 100) : 0;
+    const onTrack = enriched.filter(r => r.pct >= 100).length;
+    const atRisk  = enriched.filter(r => r.pct >= 80 && r.pct < 100).length;
+    const behind  = enriched.filter(r => r.pct < 80 && r.target > 0).length;
+
+    const monthLabel = activeMonths.map(m => m.toUpperCase()).join('+');
+
+    const rowsHtml = enriched.map((r, i) => {
+      const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
+      const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : '';
+      return `<tr style="background:${bg};">
+        <td class="center muted">${i+1}</td>
+        <td class="strong">${escapeHtml(String(r.storeName))}</td>
+        <td class="muted">${escapeHtml(String(r.area))}</td>
+        <td class="right">${r.target ? fmtRpShort(r.target) : '—'}</td>
+        <td class="right strong">${fmtRpShort(r.actual)}</td>
+        <td class="right" style="color:${r.gap >= 0 ? '#16a34a' : '#dc2626'};">${r.gap >= 0 ? '+' : ''}${fmtRpShort(r.gap)}</td>
+        <td class="right" style="color:${color};font-weight:700;">${r.target ? r.pct.toFixed(1)+'%' : '—'}</td>
       </tr>`;
     }).join('');
-    wrap.innerHTML = `<div class="card"><div class="card-header"><div class="card-title">Target vs Actual</div></div>
-      <div class="table-wrap" style="max-height:560px;overflow:auto;">
-        <table class="data"><thead><tr>
-          <th>Toko</th><th class="right">Target</th><th class="right">Actual</th><th class="right">Achievement</th>
-        </tr></thead><tbody>${rows}</tbody></table>
-      </div></div>`;
+
+    wrap.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
+        <div class="kpi-card kpi-primary"><div class="kpi-label">Target (${monthLabel})</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totTarget)}</span></span><div class="kpi-sub">total periode</div></div>
+        <div class="kpi-card"><div class="kpi-label">Actual</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totActual)}</span></span><div class="kpi-sub">dari byEntity</div></div>
+        <div class="kpi-card"><div class="kpi-label">Gap</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totGap>=0?'#16a34a':'#dc2626'};">${totGap>=0?'+':''}${fmtRpShort(totGap)}</span></span><div class="kpi-sub">actual − target</div></div>
+        <div class="kpi-card"><div class="kpi-label">Achievement</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totPct>=100?'#16a34a':totPct>=80?'#f59e0b':'#dc2626'};">${totPct.toFixed(1)}%</span></span><div class="kpi-sub">overall</div></div>
+        <div class="kpi-card"><div class="kpi-label">✅ On Track (≥100%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${onTrack}</span></span><div class="kpi-sub">toko</div></div>
+        <div class="kpi-card"><div class="kpi-label">⚠️ Behind (&lt;80%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${behind}</span></span><div class="kpi-sub">⚡ ${atRisk} at risk</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Target vs Actual · ${monthLabel} 2026 · ${enriched.length} toko</div></div>
+        <div class="table-wrap" style="max-height:560px;overflow:auto;">
+          <table class="data">
+            <thead><tr>
+              <th class="center" style="width:30px;">#</th>
+              <th>Toko</th>
+              <th>Area</th>
+              <th class="right">Target</th>
+              <th class="right">Actual</th>
+              <th class="right">Gap</th>
+              <th class="right">Achievement</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;
   }
@@ -1769,39 +1832,67 @@ async function renderRefund() {
   try {
     const year = (state.from || '').slice(0,4) || String(new Date().getFullYear());
     const data = await fetchAPI(`/api/sales/refunds?year=${year}&channel=retail`);
-    const summary = data.summary || data.total || {};
-    const byStore = data.by_store || data.byStore || [];
-    const bySpg = data.by_spg || data.bySpg || [];
-    const byArea = data.by_area || data.byArea || [];
+    // Actual shape: {summary:{refund_qty, refund_value},
+    //                by_store:[{toko, area, refund_qty, refund_value}],
+    //                by_spg:[{spg, toko, refund_qty, refund_value}],
+    //                by_area:[{area, refund_qty, refund_value}],
+    //                by_article:[{article, refund_qty, refund_value}],
+    //                detail:[...]}
+    const summary = data.summary || {};
+    const byStore = (data.by_store || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const bySpg   = (data.by_spg   || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const byArea  = (data.by_area  || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const byArticle = (data.by_article || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
 
-    const render = () => {
-      const rows = (arr, keyName = 'name') => (arr || []).slice(0, 50).map(r => `<tr>
-        <td class="strong">${escapeHtml(String(r[keyName] || r.store || r.spg || r.area || '-'))}</td>
-        <td class="right">${fmtNum(r.refund_count || r.count || r.qty || 0)}</td>
-        <td class="right strong">${fmtRpShort(r.refund_amount || r.amount || r.revenue || 0)}</td>
-      </tr>`).join('');
+    const totRev = state.rawData && state.rawData.kpis ? (state.rawData.kpis.revenue || 0) : 0;
+    const refundRate = totRev ? (summary.refund_value / totRev * 100) : 0;
 
-      wrap.innerHTML = `
-        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
-          <div class="kpi-card kpi-primary"><div class="kpi-label">Total Refund Rp</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(summary.total_amount || summary.amount || 0)}</span></span></div>
-          <div class="kpi-card"><div class="kpi-label">Qty Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.total_qty || summary.qty || 0)}</span></span></div>
-          <div class="kpi-card"><div class="kpi-label">Jumlah Transaksi</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.count || summary.total_count || 0)}</span></span></div>
-          <div class="kpi-card"><div class="kpi-label">Toko Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum((byStore||[]).length)}</span></span></div>
-        </div>
-        <div class="grid-2">
-          <div class="card"><div class="card-header"><div class="card-title">Top Toko Refund</div></div>
-            <div class="table-wrap" style="max-height:340px;overflow:auto;"><table class="data"><thead><tr><th>Toko</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead><tbody>${rows(byStore, 'store') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">—</td></tr>'}</tbody></table></div>
+    const rowHtml = (arr, primary, secondary) => (arr || []).slice(0, 50).map(r => `<tr>
+      <td class="strong">${escapeHtml(String(r[primary] || '-'))}</td>
+      ${secondary ? `<td class="muted">${escapeHtml(String(r[secondary] || '-'))}</td>` : ''}
+      <td class="right">${fmtNum(r.refund_qty || 0)}</td>
+      <td class="right strong">${fmtRpShort(r.refund_value || 0)}</td>
+    </tr>`).join('') || `<tr><td colspan="${secondary ? 4 : 3}" class="muted" style="padding:24px;text-align:center;">Tidak ada refund untuk periode ini.</td></tr>`;
+
+    wrap.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
+        <div class="kpi-card kpi-primary"><div class="kpi-label">Refund Value</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(summary.refund_value || 0)}</span></span><div class="kpi-sub">${fmtRp(summary.refund_value || 0)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Refund Qty</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.refund_qty || 0)}</span></span><div class="kpi-sub">pairs</div></div>
+        <div class="kpi-card"><div class="kpi-label">% dari Omzet</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${refundRate>2?'#dc2626':refundRate>1?'#f59e0b':'#16a34a'};">${refundRate.toFixed(2)}%</span></span><div class="kpi-sub">retail revenue</div></div>
+        <div class="kpi-card"><div class="kpi-label">Toko Kena Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(byStore.length)}</span></span><div class="kpi-sub">dengan refund</div></div>
+        <div class="kpi-card"><div class="kpi-label">SPG Kena Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(bySpg.length)}</span></span><div class="kpi-sub">orang</div></div>
+        <div class="kpi-card"><div class="kpi-label">Artikel Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(byArticle.length)}</span></span><div class="kpi-sub">SKU unik</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card"><div class="card-header"><div class="card-title">Top Toko · Refund</div></div>
+          <div class="table-wrap" style="max-height:340px;overflow:auto;">
+            <table class="data"><thead><tr><th>Toko</th><th>Area</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+            <tbody>${rowHtml(byStore, 'toko', 'area')}</tbody></table>
           </div>
-          <div class="card"><div class="card-header"><div class="card-title">Top SPG Refund</div></div>
-            <div class="table-wrap" style="max-height:340px;overflow:auto;"><table class="data"><thead><tr><th>SPG</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead><tbody>${rows(bySpg, 'spg') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">—</td></tr>'}</tbody></table></div>
+        </div>
+        <div class="card"><div class="card-header"><div class="card-title">Top SPG · Refund</div></div>
+          <div class="table-wrap" style="max-height:340px;overflow:auto;">
+            <table class="data"><thead><tr><th>SPG</th><th>Toko</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+            <tbody>${rowHtml(bySpg, 'spg', 'toko')}</tbody></table>
           </div>
         </div>
-        <div class="card">
-          <div class="card-header"><div class="card-title">Per Area</div></div>
-          <div class="table-wrap" style="max-height:260px;overflow:auto;"><table class="data"><thead><tr><th>Area</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead><tbody>${rows(byArea, 'area') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">—</td></tr>'}</tbody></table></div>
-        </div>`;
-    };
-    render();
+      </div>
+
+      <div class="grid-2">
+        <div class="card"><div class="card-header"><div class="card-title">Per Area</div></div>
+          <div class="table-wrap" style="max-height:280px;overflow:auto;">
+            <table class="data"><thead><tr><th>Area</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+            <tbody>${rowHtml(byArea, 'area')}</tbody></table>
+          </div>
+        </div>
+        <div class="card"><div class="card-header"><div class="card-title">Top Artikel Refund</div></div>
+          <div class="table-wrap" style="max-height:280px;overflow:auto;">
+            <table class="data"><thead><tr><th>Artikel</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+            <tbody>${rowHtml(byArticle, 'article')}</tbody></table>
+          </div>
+        </div>
+      </div>`;
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/sales/refunds: ${escapeHtml(e.message)}</div>`;
   }

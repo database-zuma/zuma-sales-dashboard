@@ -527,7 +527,7 @@ table.data tfoot td {
         <option value="event">🎪 Event</option>
       </select>
     </div>
-    <div class="filter-group flex">
+    <div class="filter-group flex" id="fgArea">
       <label class="filter-label">Area</label>
       <div class="msx" id="msArea"></div>
     </div>
@@ -867,7 +867,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.13 · build 2026-04-23 · Mataram 2 merge + Event channel + fuzzy target match</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.14 · build 2026-04-23 · tighter fuzzy match + area→toko cascade + hide area for Event</span>
   </footer>
 
 </div>
@@ -907,7 +907,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.13';
+const APP_VERSION = 'v1.14';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1153,18 +1153,49 @@ async function loadReferenceOptions() {
   applyReferenceOptions();
 }
 
-// Push reference lists into the multi-select components
+// Push reference lists into the multi-select components.
+// Store options from backend are {name, area} objects — kept intact so we can
+// cascade-filter the toko dropdown by selected area(s) client-side.
 function applyReferenceOptions() {
   const r = state.referenceOptions || {};
+  // Normalize store options to {value, label, area}
+  const storeOpts = (r.stores || []).map(s => typeof s === 'string'
+    ? { value: s, label: s, area: null }
+    : { value: s.name, label: s.name, area: s.area || null });
+  state._allStoreOptions = storeOpts;
   if (window._msx) {
     window._msx.area   && window._msx.area.setOptions(r.areas   || []);
-    window._msx.store  && window._msx.store.setOptions(r.stores  || []);
     window._msx.gender && window._msx.gender.setOptions(r.genders || []);
     window._msx.series && window._msx.series.setOptions(r.series || []);
     window._msx.tier   && window._msx.tier.setOptions(r.tiers   || []);
+    applyStoreAreaCascade();
   }
   const label = document.getElementById('msStoreLabel');
   if (label) label.textContent = filterEntityLabel(state.channel);
+  // Event channel has no meaningful area — hide the area filter entirely.
+  const areaGroup = document.getElementById('fgArea');
+  if (areaGroup) areaGroup.style.display = state.channel === 'event' ? 'none' : '';
+}
+
+// Filter the Toko dropdown so it only lists stores in the currently-selected area(s).
+// No area selected → all stores. Prunes selections that are no longer visible.
+function applyStoreAreaCascade() {
+  if (!window._msx || !window._msx.store) return;
+  const all = state._allStoreOptions || [];
+  const selectedAreas = Array.isArray(state.area) ? state.area : [];
+  const visible = selectedAreas.length
+    ? all.filter(s => !s.area || selectedAreas.includes(s.area))
+    : all;
+  window._msx.store.setOptions(visible);
+  // Prune any currently-selected stores that are no longer visible
+  if (selectedAreas.length && Array.isArray(state.store) && state.store.length) {
+    const visibleNames = new Set(visible.map(v => v.value));
+    const pruned = state.store.filter(s => visibleNames.has(s));
+    if (pruned.length !== state.store.length) {
+      state.store = pruned;
+      window._msx.store.setSelected(pruned);
+    }
+  }
 }
 
 // Legacy populateFilters kept as thin no-op (reference options handle populating now).
@@ -2045,22 +2076,31 @@ function _similarityRatio(a, b) {
   return (2 * lcs) / (m + n);
 }
 
-// Mirror of backend _fuzzy_match — same tolerance rules so both views agree.
+// Mirror of backend _fuzzy_match. Rules (first match wins):
+// 1. Exact (post-normalize).
+// 2. Substring either side, both ≥4 chars (blocks "id" matching "wide").
+// 3. Token overlap ≥75% of BOTH sides AND ≥2 shared tokens — requires both-direction
+//    because "Peliatan" being 100% of smaller but only 67% of larger should NOT match
+//    "Lebah Peliatan".
+// 4. Very-high ratio (≥0.95) AND ≥50% token overlap with ≥2 shared tokens — catches
+//    single-char typos (Xchange/Exchange) without green-lighting Lippo Bali/Batu (0.928).
 function targetFuzzyMatch(a, b) {
   const na = String(a || '').toLowerCase().trim();
   const nb = String(b || '').toLowerCase().trim();
   if (!na || !nb) return false;
   if (na === nb) return true;
-  if (na.includes(nb) || nb.includes(na)) return true;
+  if (na.length >= 4 && nb.length >= 4 && (na.includes(nb) || nb.includes(na))) return true;
   const ta = _targetTokens(a);
   const tb = _targetTokens(b);
-  if (ta.size && tb.size) {
-    let inter = 0;
-    for (const t of ta) if (tb.has(t)) inter++;
-    const smaller = Math.min(ta.size, tb.size);
-    if (smaller && inter / smaller >= 0.75 && inter >= 2) return true;
-  }
-  return _similarityRatio(na, nb) >= 0.85;
+  if (!ta.size || !tb.size) return false;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  if (inter < 2) return false;
+  const smaller = Math.min(ta.size, tb.size);
+  const larger = Math.max(ta.size, tb.size);
+  if (inter / smaller >= 0.75 && inter / larger >= 0.75) return true;
+  if (inter / smaller >= 0.5 && _similarityRatio(na, nb) >= 0.95) return true;
+  return false;
 }
 
 async function renderTarget() {
@@ -2929,7 +2969,7 @@ function setupEvents() {
   // Multi-select filters wired as component instances.
   // Each instance notifies us with new selected-array; we update state + refetch.
   window._msx = window._msx || {};
-  const buildMsx = (containerId, stateKey, { searchable, placeholder }) => {
+  const buildMsx = (containerId, stateKey, { searchable, placeholder, onSelect } = {}) => {
     const host = document.getElementById(containerId);
     if (!host) return null;
     const inst = new MultiSelect(host, {
@@ -2938,12 +2978,17 @@ function setupEvents() {
       onChange: (vals) => {
         state[stateKey] = vals;
         state.page = 1;
+        if (onSelect) onSelect(vals);
         refresh({ reloadData: true });
       }
     });
     return inst;
   };
-  window._msx.area   = buildMsx('msArea',   'area',   { searchable: false, placeholder: 'Semua Area' });
+  // Area change → cascade: re-filter the Toko dropdown to only show stores in selected area.
+  window._msx.area   = buildMsx('msArea',   'area',   {
+    searchable: false, placeholder: 'Semua Area',
+    onSelect: () => applyStoreAreaCascade(),
+  });
   window._msx.store  = buildMsx('msStore',  'store',  { searchable: true,  placeholder: 'Semua Toko' });
   window._msx.gender = buildMsx('msGender', 'gender', { searchable: false, placeholder: 'Semua Gender' });
   window._msx.series = buildMsx('msSeries', 'series', { searchable: true,  placeholder: 'Semua Series' });

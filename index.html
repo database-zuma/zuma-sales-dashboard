@@ -866,7 +866,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.11 · build 2026-04-23 · Target Monthly Trend matrix + compact/expanded toggle + year range</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.12 · build 2026-04-23 · Target: skip area rollups + split tracked/untracked + sort by achievement asc</span>
   </footer>
 
 </div>
@@ -906,7 +906,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.11';
+const APP_VERSION = 'v1.12';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1993,11 +1993,18 @@ function renderPromo(data) {
 }
 
 // ============ TARGET (lazy fetch) ============
+// Area-level rollup targets — these are aggregate region targets in the Google Sheet,
+// not actual stores. Skip them so they don't show as fake rows or get duplicated across
+// many stores via substring matching.
+const TARGET_AREA_ROLLUPS = new Set([
+  'bali','batam','jakarta','kalimantan','kediri','kupang','lombok',
+  'madiun','makasar','malang','medan','ntb','ntt','nusa penida',
+  'padang sidempuan','samarinda','tarakan','surabaya','gorontalo',
+]);
+
 async function renderTarget() {
   const wrap = document.getElementById('targetContent');
 
-  // Global channel: target composition is ambiguous (mixes retail+online+consig+wholesale
-  // with wildly different target semantics). Easier to force user to pick a specific channel.
   if (state.channel === 'global') {
     wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Pilih channel spesifik (Retail / Online / Consig / Wholesale) untuk melihat target.</div>';
     return;
@@ -2006,16 +2013,19 @@ async function renderTarget() {
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target...</div>';
   try {
     const data = await fetchAPI('/api/targets');
-    const targets = Array.isArray(data)
+    const rawTargets = Array.isArray(data)
       ? data
       : Object.values(data || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
 
-    if (!targets.length) {
+    if (!rawTargets.length) {
       wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:40px;">Endpoint /api/targets balik kosong.</div>';
       return;
     }
 
-    // Determine which months fall within [state.from, state.to]
+    // Filter out area-level rollups — we only want per-store targets
+    const normalize = s => String(s || '').toLowerCase().trim();
+    const targets = rawTargets.filter(t => !TARGET_AREA_ROLLUPS.has(normalize(t.store || t.toko)));
+
     const MONTH_KEYS = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
     const fromD = new Date(state.from);
     const toD   = new Date(state.to);
@@ -2023,21 +2033,18 @@ async function renderTarget() {
     const monthLabel = activeMonths.map(m => m.toUpperCase()).join('+');
 
     const byEntity = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
-    const normalize = s => String(s || '').toLowerCase().trim();
 
-    // Match helper: two names are considered the same entity if either contains the other
-    // (substring, case-insensitive). Handles "Pepito" in sheet vs "Zuma Pepito Bali" in data.
     const matches = (a, b) => {
       const x = normalize(a), y = normalize(b);
       return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
     };
 
-    let enriched;
+    let tracked = [];
+    let untracked = [];
 
     if (state.channel === 'online') {
-      // Online target is a single aggregate row ("ONLINE") — sum everything in byEntity online
-      // against the single target row.
-      const onlineTargetRow = targets.find(t => normalize(t.store || t.toko) === 'online');
+      // Online single aggregate: one target row vs sum of all marketplaces.
+      const onlineTargetRow = rawTargets.find(t => normalize(t.store || t.toko) === 'online');
       if (!onlineTargetRow) {
         wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:40px;">Target Online belum ada di Google Sheet.</div>';
         return;
@@ -2045,44 +2052,68 @@ async function renderTarget() {
       const target = activeMonths.reduce((s, m) => s + (Number(onlineTargetRow[m]) || 0), 0);
       const actualRev = byEntity.reduce((s, e) => s + (Number(e.revenue) || 0), 0);
       const actualQty = byEntity.reduce((s, e) => s + (Number(e.pairs) || 0), 0);
-      const pct = target ? (actualRev / target * 100) : 0;
-      enriched = [{ storeName: 'Online (Shopee/Tokopedia/TikTok/Lazada/Blibli/Bukalapak)', area: '-', target, actualRev, actualQty, pct }];
+      tracked = [{
+        storeName: 'Online (Shopee/Tokopedia/TikTok/Lazada/Blibli/Bukalapak)',
+        area: '-', target, actualRev, actualQty,
+        pct: target ? (actualRev / target * 100) : 0,
+      }];
     } else {
-      // Retail / Consig / Wholesale: keep only targets that match an entity in this channel's byEntity.
-      enriched = targets.map(t => {
-        const storeName = t.store || t.toko || '-';
-        const area = t.area || '-';
+      const matchedEntityKeys = new Set();
+      tracked = targets.map(t => {
+        const sheetName = t.store || t.toko || '-';
         const target = activeMonths.reduce((s, m) => s + (Number(t[m]) || 0), 0);
-        const match = byEntity.find(e => matches(e.name, storeName));
-        if (!match) return null;   // not in this channel
+        if (target <= 0) return null;
+        const match = byEntity.find(e => matches(e.name, sheetName));
+        if (!match) return null;
+        matchedEntityKeys.add(normalize(match.name));
         const actualRev = Number(match.revenue) || 0;
         const actualQty = Number(match.pairs) || 0;
-        const pct = target ? (actualRev / target * 100) : 0;
-        return { storeName, area: match.area || area, target, actualRev, actualQty, pct };
+        return {
+          storeName: match.name,  // prefer entity's own name over sheet name
+          area: match.area || t.area || '-',
+          target, actualRev, actualQty,
+          pct: target ? (actualRev / target * 100) : 0,
+        };
       }).filter(Boolean);
+
+      untracked = byEntity
+        .filter(e => !matchedEntityKeys.has(normalize(e.name)))
+        .map(e => ({
+          storeName: e.name,
+          area: e.area || '-',
+          target: 0,
+          actualRev: Number(e.revenue) || 0,
+          actualQty: Number(e.pairs) || 0,
+          pct: 0,
+        }))
+        .filter(e => e.actualRev > 0 || e.actualQty > 0);
     }
 
-    if (!enriched.length) {
-      wrap.innerHTML = `<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Tidak ada target yang match dengan entity channel <strong>${state.channel}</strong> di periode ini.</div>`;
+    // Sort: tracked by achievement ascending (worst first, focus on behind stores).
+    //       untracked by revenue descending (biggest untracked stores first).
+    tracked.sort((a, b) => a.pct - b.pct);
+    untracked.sort((a, b) => b.actualRev - a.actualRev);
+
+    if (!tracked.length && !untracked.length) {
+      wrap.innerHTML = `<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Tidak ada entity channel <strong>${state.channel}</strong> di periode ini.</div>`;
       return;
     }
 
-    enriched.sort((a, b) => b.target - a.target);
-
-    // Summary KPIs
-    const totTarget = enriched.reduce((s, r) => s + r.target, 0);
-    const totRev    = enriched.reduce((s, r) => s + r.actualRev, 0);
-    const totQty    = enriched.reduce((s, r) => s + r.actualQty, 0);
+    // Aggregate KPIs across tracked only (untracked has no target).
+    const totTarget = tracked.reduce((s, r) => s + r.target, 0);
+    const totRev    = tracked.reduce((s, r) => s + r.actualRev, 0);
+    const totQty    = tracked.reduce((s, r) => s + r.actualQty, 0);
     const totPct    = totTarget ? (totRev / totTarget * 100) : 0;
-    const onTrack = enriched.filter(r => r.pct >= 100).length;
-    const atRisk  = enriched.filter(r => r.pct >= 80 && r.pct < 100).length;
-    const behind  = enriched.filter(r => r.pct < 80 && r.target > 0).length;
+    const onTrack = tracked.filter(r => r.pct >= 100).length;
+    const atRisk  = tracked.filter(r => r.pct >= 80 && r.pct < 100).length;
+    const behind  = tracked.filter(r => r.pct < 80 && r.target > 0).length;
 
     const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;
+    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
 
-    const rowsHtml = enriched.map((r, i) => {
+    const trackedRows = tracked.map((r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
-      const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : '';
+      const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
       return `<tr style="background:${bg};">
         <td class="center muted">${i+1}</td>
         <td class="strong">${escapeHtml(String(r.storeName))}</td>
@@ -2094,31 +2125,63 @@ async function renderTarget() {
       </tr>`;
     }).join('');
 
-    wrap.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
-        <div class="kpi-card kpi-primary"><div class="kpi-label">Target · ${chLabel} (${monthLabel})</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totTarget)}</span></span><div class="kpi-sub">total periode</div></div>
-        <div class="kpi-card"><div class="kpi-label">Revenue</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totRev)}</span></span><div class="kpi-sub">actual</div></div>
-        <div class="kpi-card"><div class="kpi-label">Qty</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(totQty)}</span></span><div class="kpi-sub">pairs</div></div>
-        <div class="kpi-card"><div class="kpi-label">Achievement</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totPct>=100?'#16a34a':totPct>=80?'#f59e0b':'#dc2626'};">${totPct.toFixed(1)}%</span></span><div class="kpi-sub">overall</div></div>
-        <div class="kpi-card"><div class="kpi-label">✅ On Track (≥100%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${onTrack}</span></span><div class="kpi-sub">toko</div></div>
-        <div class="kpi-card"><div class="kpi-label">⚠️ Behind (&lt;80%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${behind}</span></span><div class="kpi-sub">⚡ ${atRisk} at risk</div></div>
-      </div>
+    const untrackedRows = untracked.map((r, i) => `
+      <tr>
+        <td class="center muted">${i+1}</td>
+        <td class="strong">${escapeHtml(String(r.storeName))}</td>
+        <td class="muted">${escapeHtml(String(r.area))}</td>
+        <td class="right strong">${fmtRpShort(r.actualRev)}</td>
+        <td class="right">${fmtNum(r.actualQty)}</td>
+      </tr>`).join('');
+
+    const trackedCard = tracked.length ? `
       <div class="card">
-        <div class="card-header"><div class="card-title">Target vs Actual · ${chLabel} · ${monthLabel} 2026 · ${enriched.length} entity</div></div>
+        <div class="card-header"><div class="card-title">✅ Tracked · ada target (${tracked.length})</div></div>
         <div class="table-wrap" style="max-height:560px;overflow:auto;">
           <table class="data">
             <thead><tr>
               <th class="center" style="width:30px;">#</th>
-              <th>${state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko'}</th>
+              <th>${nameLabel}</th>
               <th>Area</th>
               <th class="right">Target</th>
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
-              <th class="right">Achievement</th>
+              <th class="right">Achv</th>
             </tr></thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody>${trackedRows}</tbody>
           </table>
         </div>
+      </div>` : '';
+
+    const untrackedCard = untracked.length ? `
+      <div class="card">
+        <div class="card-header"><div class="card-title">⚠️ Untracked · belum ada target (${untracked.length})</div></div>
+        <div class="table-wrap" style="max-height:560px;overflow:auto;">
+          <table class="data">
+            <thead><tr>
+              <th class="center" style="width:30px;">#</th>
+              <th>${nameLabel}</th>
+              <th>Area</th>
+              <th class="right">Revenue</th>
+              <th class="right">Qty</th>
+            </tr></thead>
+            <tbody>${untrackedRows}</tbody>
+          </table>
+        </div>
+      </div>` : '';
+
+    wrap.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
+        <div class="kpi-card kpi-primary"><div class="kpi-label">Target · ${chLabel} (${monthLabel})</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totTarget)}</span></span><div class="kpi-sub">tracked only</div></div>
+        <div class="kpi-card"><div class="kpi-label">Revenue (tracked)</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totRev)}</span></span><div class="kpi-sub">actual</div></div>
+        <div class="kpi-card"><div class="kpi-label">Qty (tracked)</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(totQty)}</span></span><div class="kpi-sub">pairs</div></div>
+        <div class="kpi-card"><div class="kpi-label">Achievement</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totPct>=100?'#16a34a':totPct>=80?'#f59e0b':'#dc2626'};">${totPct.toFixed(1)}%</span></span><div class="kpi-sub">overall</div></div>
+        <div class="kpi-card"><div class="kpi-label">✅ On Track (≥100%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${onTrack}</span></span><div class="kpi-sub">toko</div></div>
+        <div class="kpi-card"><div class="kpi-label">⚠️ Behind (&lt;80%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${behind}</span></span><div class="kpi-sub">⚡ ${atRisk} at risk</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:12px;">
+        ${trackedCard}
+        ${untrackedCard}
       </div>`;
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;
@@ -2189,8 +2252,18 @@ async function renderTargetMatrix() {
           <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Ach%</th>`).join('')}
       </tr>`;
 
-    // Body
-    const rowsHtml = stores.map((s, i) => {
+    // Sort: tracked first (by overall achievement asc — worst first), then untracked
+    // (by total_revenue desc — biggest unclaimed stores first). Visual separator between.
+    const tracked = stores.filter(s => s.total_target > 0).map(s => {
+      const pct = s.total_target ? (s.total_revenue / s.total_target * 100) : 0;
+      return { ...s, _overallPct: pct };
+    }).sort((a, b) => a._overallPct - b._overallPct);
+    const untracked = stores.filter(s => s.total_target === 0 && s.total_revenue > 0)
+      .sort((a, b) => b.total_revenue - a.total_revenue);
+
+    const totalCols = 3 + months.length * (compact ? 1 : 4);
+
+    const renderRow = (s, i, isUntracked) => {
       const cells = months.map(m => {
         const v = s.months[m.key] || { qty: 0, revenue: 0, target: 0 };
         const hasTarget = v.target > 0;
@@ -2205,14 +2278,27 @@ async function renderTargetMatrix() {
           <td class="right muted" style="font-size:11px;white-space:nowrap;">${hasTarget ? fmtRpShort(v.target) : '—'}</td>
           <td class="right" style="background:${bg};color:${fg};font-weight:700;font-size:11px;white-space:nowrap;">${hasTarget ? pct.toFixed(0)+'%' : '—'}</td>`;
       }).join('');
+      const rowBg = isUntracked ? 'background:rgba(148,163,184,0.04);' : '';
       return `
-        <tr>
-          <td class="center muted" style="${stickyFirstCss};">${i+1}</td>
-          <td class="strong" style="${stickyFirstCss};left:36px;">${escapeHtml(s.name || '-')}</td>
-          <td class="muted" style="${stickyFirstCss};left:256px;">${escapeHtml(s.area || '-')}</td>
+        <tr style="${rowBg}">
+          <td class="center muted" style="${stickyFirstCss};${rowBg}">${i+1}</td>
+          <td class="strong" style="${stickyFirstCss};left:36px;${rowBg}">${escapeHtml(s.name || '-')}</td>
+          <td class="muted" style="${stickyFirstCss};left:256px;${rowBg}">${escapeHtml(s.area || '-')}</td>
           ${cells}
         </tr>`;
-    }).join('');
+    };
+
+    const sectionHeader = (label, bg, count) => `
+      <tr style="background:${bg};">
+        <td colspan="${totalCols}" style="padding:8px 12px;font-size:11px;font-weight:600;color:#475569;position:sticky;left:0;background:${bg};">
+          ${label} (${count})
+        </td>
+      </tr>`;
+    const trackedHead = tracked.length ? sectionHeader('✅ Tracked — sorted by achievement ascending', '#ecfdf5', tracked.length) : '';
+    const trackedRowsHtml = tracked.map((s, i) => renderRow(s, i + 1, false)).join('');
+    const untrackedHead = untracked.length ? sectionHeader('⚠️ Untracked — belum ada target', '#f1f5f9', untracked.length) : '';
+    const untrackedRowsHtml = untracked.map((s, i) => renderRow(s, i + 1, true)).join('');
+    const rowsHtml = trackedHead + trackedRowsHtml + untrackedHead + untrackedRowsHtml;
 
     const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;
 

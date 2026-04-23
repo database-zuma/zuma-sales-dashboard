@@ -264,14 +264,16 @@ html, body {
   margin-top: 3px; max-height: 320px; overflow-y: auto;
 }
 .sku-suggestion {
-  padding: 7px 10px; cursor: pointer; font-size: 11.5px;
+  padding: 8px 10px; cursor: pointer; font-size: 11.5px;
   border-bottom: 1px solid var(--border-soft);
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: flex-start; gap: 10px;
 }
 .sku-suggestion:hover, .sku-suggestion.active { background: var(--muted); }
-.sku-suggestion-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sku-suggestion-code { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--fg-muted); }
-.sku-suggestion-meta { font-size: 10px; color: var(--fg-soft); text-align: right; flex-shrink: 0; }
+.sku-suggestion-main { flex: 1; min-width: 0; }
+.sku-suggestion-code { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--fg); font-weight: 600; }
+.sku-suggestion-kmix { font-family: ui-monospace, monospace; font-size: 10px; color: var(--fg-muted); margin-left: 6px; }
+.sku-suggestion-name { font-size: 11.5px; color: var(--fg); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sku-suggestion-meta { font-size: 10.5px; color: var(--fg-soft); text-align: right; flex-shrink: 0; white-space: nowrap; }
 
 /* ======= TAB NAV ======= pill navy on active (not underline — differentiates from iseller) */
 .tab-nav {
@@ -867,7 +869,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.20 · build 2026-04-23 · parallel filter-options + data fetch, session cache for repeat area clicks</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.21 · build 2026-04-23 · SKU typeahead shows kode + kode_mix + nama barang (line-wrap, fallback if nama kosong)</span>
   </footer>
 
 </div>
@@ -907,7 +909,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.20';
+const APP_VERSION = 'v1.21';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2784,14 +2786,23 @@ function setupSkuTypeahead() {
       sugs.hidden = false;
       return;
     }
-    sugs.innerHTML = items.map((r, i) => `
-      <div class="sku-suggestion" data-idx="${i}" data-kb="${escapeHtml(r.kode_besar||'')}">
+    sugs.innerHTML = items.map((r, i) => {
+      const kb = r.kode_besar || '';
+      const km = r.kode_mix || '';
+      // Fall back through multiple name fields so the user always sees SOMETHING meaningful,
+      // never just "-". Backend populates product_name from kodemix.nama_barang → iseller.produk,
+      // but for some channels (consig/wholesale) it can be empty.
+      const name = r.product_name || r.kode_mix || r.kode_kecil || '(tanpa nama)';
+      const kmixLine = km && km !== kb ? `<span class="sku-suggestion-kmix">· ${escapeHtml(km)}</span>` : '';
+      return `
+      <div class="sku-suggestion" data-idx="${i}" data-kb="${escapeHtml(kb)}">
         <div class="sku-suggestion-main">
-          <div class="sku-suggestion-code">${escapeHtml(r.kode_besar||'')}</div>
-          <div>${escapeHtml(r.product_name || '-')}</div>
+          <div><span class="sku-suggestion-code">${escapeHtml(kb)}</span>${kmixLine}</div>
+          <div class="sku-suggestion-name">${escapeHtml(name)}</div>
         </div>
         <div class="sku-suggestion-meta">${escapeHtml(r.gender||'-')} · ${fmtNum(r.pairs||0)} pairs</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     sugs.hidden = false;
     sugs.querySelectorAll('.sku-suggestion').forEach(el => {
       el.onclick = () => {

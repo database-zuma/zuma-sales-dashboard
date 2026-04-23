@@ -848,7 +848,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.6 · build 2026-04-23 · UPT→ATU + online txn via nomor_invoice</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.7 · build 2026-04-23 · auto-invalidate stale cache on version change</span>
   </footer>
 
 </div>
@@ -885,7 +885,17 @@ const cache = {};
 
 // ============ LOCALSTORAGE CACHE (10min TTL) ============
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const CACHE_PREFIX = 'zuma-sales-v3:';
+const CACHE_PREFIX = 'zuma-sales-v4:';
+// On each page load, detect an app-version change and nuke all stale payloads
+// so frontend schema changes propagate without the user having to clear manually.
+const APP_VERSION = 'v1.7';
+try {
+  const stored = localStorage.getItem('zuma-sales-appver');
+  if (stored !== APP_VERSION) {
+    Object.keys(localStorage).filter(k => k.startsWith('zuma-sales-')).forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('zuma-sales-appver', APP_VERSION);
+  }
+} catch {}
 function lsGet(key) {
   try {
     const raw = localStorage.getItem(CACHE_PREFIX + key);

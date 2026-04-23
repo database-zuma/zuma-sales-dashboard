@@ -845,7 +845,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.4 · build 2026-04-23 · fix online/consig data bleed</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.5 · build 2026-04-23 · entity area split in outlet + title-case consig</span>
   </footer>
 
 </div>
@@ -1139,6 +1139,17 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// Title-case entity names that come in all-lowercase from the source
+// (e.g. "zuma pepito bali" → "Zuma Pepito Bali"). Already-capitalized
+// names (Shopee, Lazada) are preserved as-is. Apostrophes kept lower
+// for "Clandy's" style.
+function titleCaseEntity(s) {
+  if (!s) return '';
+  const str = String(s).trim();
+  if (!/[a-z]/.test(str) || /[A-Z]/.test(str[0] || '')) return str;
+  return str.replace(/\b([a-z])([a-z']*)/g, (_, a, b) => a.toUpperCase() + b);
+}
+
 // ============ RENDER EXECUTIVE ============
 let chartTrendInstance = null;
 let chartContribInstance = null;
@@ -1284,27 +1295,29 @@ function renderContribChart(data) {
 }
 
 function renderPerformanceTable(data) {
-  // For Global: show byChannel (RETAIL/ONLINE/CONSIG/WHOLESALE rows)
-  // For channel-specific: show byEntity (per toko/marketplace/partner/customer)
+  // Executive table — aggregates to entity-level (no area split).
+  // Backend byEntity now groups by (entity, area); collapse areas here.
   const channel = state.channel;
   const useChannel = channel === 'global';
   const source = useChannel ? (data.byChannel || []) : (data.byEntity || []);
 
-  const list = source.map(s => {
-    const pairs = Number(s.pairs) || 0;
-    const revenue = Number(s.revenue) || 0;
-    const trx = Number(s.transactions) || 0;
-    return {
-      entity: useChannel ? String(s.name || '-').toUpperCase() : String(s.name || '-'),
-      area: useChannel ? '' : (s.area || '-'),
-      qty: pairs,
-      revenue: revenue,
-      trx: trx,
-      upt: trx ? pairs / trx : 0,
-      asp: pairs ? revenue / pairs : 0,
-      atv: trx ? revenue / trx : 0,
-    };
-  }).sort((a,b) => b.revenue - a.revenue);
+  const aggMap = {};
+  source.forEach(s => {
+    const rawName = String(s.name || '-');
+    const key = useChannel ? rawName.toUpperCase() : rawName;
+    if (!aggMap[key]) {
+      aggMap[key] = { entity: useChannel ? key : titleCaseEntity(rawName), qty: 0, revenue: 0, trx: 0 };
+    }
+    aggMap[key].qty     += Number(s.pairs)        || 0;
+    aggMap[key].revenue += Number(s.revenue)      || 0;
+    aggMap[key].trx     += Number(s.transactions) || 0;
+  });
+  const list = Object.values(aggMap).map(a => ({
+    ...a,
+    upt: a.trx ? a.qty / a.trx : 0,
+    asp: a.qty ? a.revenue / a.qty : 0,
+    atv: a.trx ? a.revenue / a.trx : 0,
+  })).sort((a,b) => b.revenue - a.revenue);
 
   const label = entityLabel(channel);
   document.getElementById('performanceTitle').textContent = `${label} Performance`;
@@ -1312,7 +1325,6 @@ function renderPerformanceTable(data) {
   const head = `
     <th class="center" style="width:30px;">#</th>
     <th>${label}</th>
-    <th>Area</th>
     <th class="right">Qty</th>
     <th class="right">Revenue</th>
     <th class="right">Txn</th>
@@ -1337,7 +1349,7 @@ function renderPerformanceTable(data) {
   const slice = list.slice((safePage-1)*size, safePage*size);
 
   if (!list.length) {
-    document.getElementById('performanceBody').innerHTML = `<tr><td colspan="9" class="empty" style="border:none;padding:32px;">Tidak ada data untuk periode ini.</td></tr>`;
+    document.getElementById('performanceBody').innerHTML = `<tr><td colspan="8" class="empty" style="border:none;padding:32px;">Tidak ada data untuk periode ini.</td></tr>`;
     document.getElementById('performanceFoot').innerHTML = '';
     document.getElementById('performancePagination').innerHTML = '';
     document.getElementById('performanceMeta').innerHTML = '0 ' + label.toLowerCase();
@@ -1349,7 +1361,6 @@ function renderPerformanceTable(data) {
     <tr>
       <td class="center muted">${(safePage-1)*size + i + 1}</td>
       <td class="strong">${escapeHtml(r.entity)}</td>
-      <td class="muted">${escapeHtml(r.area)}</td>
       <td class="right">${fmtNum(r.qty)}</td>
       <td class="right strong">${fmtRpShort(r.revenue)}</td>
       <td class="right muted">${r.trx ? fmtNum(r.trx) : naDash}</td>
@@ -1361,7 +1372,7 @@ function renderPerformanceTable(data) {
 
   document.getElementById('performanceFoot').innerHTML = `
     <tr>
-      <td class="center" colspan="3">TOTAL</td>
+      <td class="center" colspan="2">TOTAL</td>
       <td class="right">${fmtNum(total.qty)}</td>
       <td class="right">${fmtRpShort(total.revenue)}</td>
       <td class="right">${total.trx ? fmtNum(total.trx) : naDash}</td>
@@ -1443,7 +1454,7 @@ function renderOutlet(data) {
       const upt = trx ? pairs/trx : 0, asp = pairs ? rev/pairs : 0, atv = trx ? rev/trx : 0;
       return `<tr>
         <td class="center muted">${(page-1)*size + i + 1}</td>
-        <td class="strong">${escapeHtml(String(r.name||'-'))}</td>
+        <td class="strong">${escapeHtml(titleCaseEntity(r.name||'-'))}</td>
         <td class="muted">${escapeHtml(String(r.area||'-'))}</td>
         <td class="muted">${escapeHtml(String(r.channel||'-').toUpperCase())}</td>
         <td class="right">${fmtNum(pairs)}</td>

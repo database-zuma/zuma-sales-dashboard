@@ -696,8 +696,8 @@ table.data tfoot td {
       <div class="card" id="cardProdukTipe"><div class="card-header"><div class="card-title">Per Tipe</div></div>
         <div class="card-body"><div class="chart-box" style="height:200px;"><canvas id="chartProdukTipe"></canvas></div></div>
       </div>
-      <div class="card"><div class="card-header"><div class="card-title">Distribusi Size (ascending)</div></div>
-        <div class="card-body"><div class="chart-box" style="height:240px;"><canvas id="chartProdukSize"></canvas></div></div>
+      <div class="card"><div class="card-header"><div class="card-title">Distribusi Size</div></div>
+        <div class="card-body"><div class="chart-box" id="chartBoxProdukSize" style="height:320px;"><canvas id="chartProdukSize"></canvas></div></div>
       </div>
     </div>
   </section>
@@ -733,59 +733,69 @@ table.data tfoot td {
 
   <!-- ========= TAB: HOURLY ========= -->
   <section class="tab-content" id="tab-hourly">
-    <div class="card" style="margin-bottom:12px;">
-      <div class="card-header"><div class="card-title">Penjualan per Jam</div></div>
-      <div class="card-body"><div class="chart-box" style="height:260px;"><canvas id="chartHourly"></canvas></div></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><div class="card-title">Breakdown Jam</div></div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto;">
-        <table class="data">
-          <thead><tr>
-            <th>Jam</th>
-            <th class="right">Pairs</th>
-            <th class="right">Revenue</th>
-            <th class="right">Transaksi</th>
-            <th class="right">% Share</th>
-          </tr></thead>
-          <tbody id="hourlyBody"><tr><td colspan="5" class="loading">—</td></tr></tbody>
-          <tfoot id="hourlyFoot"></tfoot>
-        </table>
+    <div id="hourlyRetailContent">
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header"><div class="card-title">Penjualan per Jam</div></div>
+        <div class="card-body"><div class="chart-box" style="height:260px;"><canvas id="chartHourly"></canvas></div></div>
       </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Breakdown Jam</div></div>
+        <div class="table-wrap" style="max-height:420px;overflow:auto;">
+          <table class="data">
+            <thead><tr>
+              <th>Jam</th>
+              <th class="right">Pairs</th>
+              <th class="right">Revenue</th>
+              <th class="right">Transaksi</th>
+              <th class="right">% Share</th>
+            </tr></thead>
+            <tbody id="hourlyBody"><tr><td colspan="5" class="loading">—</td></tr></tbody>
+            <tfoot id="hourlyFoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="hourlyEmpty" class="card" style="display:none;">
+      <div class="empty" style="padding:48px;text-align:center;">Data per jam hanya tersedia untuk channel Retail.</div>
     </div>
   </section>
 
   <!-- ========= TAB: SPG ========= -->
   <section class="tab-content" id="tab-spg">
-    <div class="kpi-grid" id="spgKpiGrid">
-      <div class="kpi-card kpi-primary"><div class="kpi-label">Total SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiCount">—</span></span><div class="kpi-sub">orang</div></div>
-      <div class="kpi-card"><div class="kpi-label">Omzet Retail</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiRev">—</span></span><div class="kpi-sub">total</div></div>
-      <div class="kpi-card"><div class="kpi-label">Avg Rev/SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiAvg">—</span></span><div class="kpi-sub">periode</div></div>
-      <div class="kpi-card"><div class="kpi-label">Top SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiTop" style="font-size:12px;">—</span></span><div class="kpi-sub" id="spgKpiTopRev">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Total Txn Retail</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiTxn">—</span></span><div class="kpi-sub">transaksi</div></div>
-      <div class="kpi-card"><div class="kpi-label">Avg UPT</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiUpt">—</span></span><div class="kpi-sub">unit / txn</div></div>
+    <div id="spgRetailContent">
+      <div class="kpi-grid" id="spgKpiGrid">
+        <div class="kpi-card kpi-primary"><div class="kpi-label">Total SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiCount">—</span></span><div class="kpi-sub">orang</div></div>
+        <div class="kpi-card"><div class="kpi-label">Omzet Retail</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiRev">—</span></span><div class="kpi-sub">total</div></div>
+        <div class="kpi-card"><div class="kpi-label">Avg Rev/SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiAvg">—</span></span><div class="kpi-sub">periode</div></div>
+        <div class="kpi-card"><div class="kpi-label">Top SPG</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiTop" style="font-size:12px;">—</span></span><div class="kpi-sub" id="spgKpiTopRev">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Txn Retail</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiTxn">—</span></span><div class="kpi-sub">transaksi</div></div>
+        <div class="kpi-card"><div class="kpi-label">Avg UPT</div><span class="kpi-value-wrap"><span class="kpi-value" id="spgKpiUpt">—</span></span><div class="kpi-sub">unit / txn</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">SPG Leaderboard (retail only)</div>
+          <button class="btn-ghost" id="btnSpgCsv">CSV</button>
+        </div>
+        <div class="table-wrap" style="max-height:540px;overflow:auto;">
+          <table class="data">
+            <thead><tr>
+              <th class="center" style="width:30px;">#</th>
+              <th>SPG</th>
+              <th>Outlet</th>
+              <th class="right">Pairs</th>
+              <th class="right">Revenue</th>
+              <th class="right">Txn</th>
+              <th class="right">ATU</th>
+              <th class="right">ASP</th>
+              <th class="right">ATV</th>
+            </tr></thead>
+            <tbody id="spgBody"><tr><td colspan="9" class="loading">—</td></tr></tbody>
+            <tfoot id="spgFoot"></tfoot>
+          </table>
+        </div>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-header"><div class="card-title">SPG Leaderboard (retail only)</div>
-        <button class="btn-ghost" id="btnSpgCsv">CSV</button>
-      </div>
-      <div class="table-wrap" style="max-height:540px;overflow:auto;">
-        <table class="data">
-          <thead><tr>
-            <th class="center" style="width:30px;">#</th>
-            <th>SPG</th>
-            <th>Outlet</th>
-            <th class="right">Pairs</th>
-            <th class="right">Revenue</th>
-            <th class="right">Txn</th>
-            <th class="right">ATU</th>
-            <th class="right">ASP</th>
-            <th class="right">ATV</th>
-          </tr></thead>
-          <tbody id="spgBody"><tr><td colspan="9" class="loading">—</td></tr></tbody>
-          <tfoot id="spgFoot"></tfoot>
-        </table>
-      </div>
+    <div id="spgEmpty" class="card" style="display:none;">
+      <div class="empty" style="padding:48px;text-align:center;">Data SPG hanya tersedia untuk channel Retail.</div>
     </div>
   </section>
 
@@ -849,7 +859,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.8 · build 2026-04-23 · darker text contrast</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.9 · build 2026-04-23 · ASP/ATV exact + size labels + retail-only hourly/SPG + online target + fuzzy name match</span>
   </footer>
 
 </div>
@@ -886,10 +896,10 @@ const cache = {};
 
 // ============ LOCALSTORAGE CACHE (10min TTL) ============
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const CACHE_PREFIX = 'zuma-sales-v4:';
+const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.8';
+const APP_VERSION = 'v1.9';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1005,6 +1015,9 @@ async function loadChannel(channel, from, to) {
 
 // ============ UTIL ============
 const fmtRp = n => 'Rp ' + (Number(n)||0).toLocaleString('id-ID');
+// Exact rupiah, rounded to whole number (no decimals). Used for per-unit metrics (ASP/ATV)
+// where we want "Rp 167.420" precision instead of "Rp 167rb".
+const fmtRpExact = n => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
 const fmtRpShort = n => {
   n = Number(n) || 0;
   const abs = Math.abs(n);
@@ -1379,8 +1392,8 @@ function renderPerformanceTable(data) {
       <td class="right strong">${fmtRpShort(r.revenue)}</td>
       <td class="right muted">${r.trx ? fmtNum(r.trx) : naDash}</td>
       <td class="right muted">${r.trx ? r.upt.toFixed(1) : naDash}</td>
-      <td class="right muted">${r.qty ? fmtRpShort(r.asp) : naDash}</td>
-      <td class="right muted">${r.trx ? fmtRpShort(r.atv) : naDash}</td>
+      <td class="right muted">${r.qty ? fmtRpExact(r.asp) : naDash}</td>
+      <td class="right muted">${r.trx ? fmtRpExact(r.atv) : naDash}</td>
     </tr>`).join('');
   document.getElementById('performanceBody').innerHTML = rowsHtml;
 
@@ -1391,8 +1404,8 @@ function renderPerformanceTable(data) {
       <td class="right">${fmtRpShort(total.revenue)}</td>
       <td class="right">${total.trx ? fmtNum(total.trx) : naDash}</td>
       <td class="right">${total.trx ? totUpt.toFixed(1) : naDash}</td>
-      <td class="right">${total.qty ? fmtRpShort(totAsp) : naDash}</td>
-      <td class="right">${total.trx ? fmtRpShort(totAtv) : naDash}</td>
+      <td class="right">${total.qty ? fmtRpExact(totAsp) : naDash}</td>
+      <td class="right">${total.trx ? fmtRpExact(totAtv) : naDash}</td>
     </tr>`;
 
   document.getElementById('performanceMeta').innerHTML = `${list.length} ${label.toLowerCase()} · Page ${safePage}/${pages}`;
@@ -1475,8 +1488,8 @@ function renderOutlet(data) {
         <td class="right strong">${fmtRpShort(rev)}</td>
         <td class="right muted">${trx ? fmtNum(trx) : naDash}</td>
         <td class="right muted">${trx ? upt.toFixed(1) : naDash}</td>
-        <td class="right muted">${pairs ? fmtRpShort(asp) : naDash}</td>
-        <td class="right muted">${trx ? fmtRpShort(atv) : naDash}</td>
+        <td class="right muted">${pairs ? fmtRpExact(asp) : naDash}</td>
+        <td class="right muted">${trx ? fmtRpExact(atv) : naDash}</td>
       </tr>`;
     }).join('');
 
@@ -1490,8 +1503,8 @@ function renderOutlet(data) {
         <td class="right">${fmtRpShort(total.revenue)}</td>
         <td class="right">${total.trx ? fmtNum(total.trx) : naDash}</td>
         <td class="right">${total.trx ? totUpt.toFixed(1) : naDash}</td>
-        <td class="right">${total.pairs ? fmtRpShort(totAsp) : naDash}</td>
-        <td class="right">${total.trx ? fmtRpShort(totAtv) : naDash}</td>
+        <td class="right">${total.pairs ? fmtRpExact(totAsp) : naDash}</td>
+        <td class="right">${total.trx ? fmtRpExact(totAtv) : naDash}</td>
       </tr>`;
 
     document.getElementById('outletPagination').innerHTML = `
@@ -1657,8 +1670,19 @@ function renderProduk(data) {
   if (!hasFilter(state.series)) renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
   if (!hasFilter(state.tier))   renderChart('chartProdukTier',   data.byTier   || [], barOpts, 'bar', 10);
   renderChart('chartProdukTipe', data.byTipe || [], pieOpts, 'doughnut', 10);
-  // Size: single color, more rows, ordered (backend already sorts naturally ascending)
-  renderChart('chartProdukSize', data.bySize || [], barOpts, 'bar', 30, '#00E273');
+  // Size: single color, more rows, ordered. Force every size label to render (autoSkip:false)
+  // and grow the chart box vertically so labels don't overlap (~18px per bar, min 320px).
+  const sizeCount = Math.min((data.bySize || []).length, 30);
+  const sizeBox = document.getElementById('chartBoxProdukSize');
+  if (sizeBox) sizeBox.style.height = Math.max(320, sizeCount * 18) + 'px';
+  const sizeOpts = {
+    ...barOpts,
+    scales: {
+      x: barOpts.scales.x,
+      y: { grid: { display: false }, ticks: { font: {size:11}, color: '#334155', autoSkip: false } }
+    }
+  };
+  renderChart('chartProdukSize', data.bySize || [], sizeOpts, 'bar', 30, '#00E273');
 }
 
 // ============ RENDER TREND ============
@@ -1718,6 +1742,18 @@ function renderTrend(data) {
 // ============ RENDER HOURLY ============
 let chartHourlyInstance = null;
 function renderHourly(data) {
+  // Hourly breakdown only makes sense for Retail POS data (non-retail channels dump into hour 0).
+  const wrap = document.getElementById('hourlyRetailContent');
+  const empty = document.getElementById('hourlyEmpty');
+  if (state.channel !== 'retail') {
+    if (chartHourlyInstance) { chartHourlyInstance.destroy(); chartHourlyInstance = null; }
+    if (wrap) wrap.style.display = 'none';
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (wrap) wrap.style.display = '';
+  if (empty) empty.style.display = 'none';
+
   const hours = Array.from({ length: 24 }, (_, i) => ({ hour: i, pairs: 0, revenue: 0, transactions: 0 }));
   // Skip hour 0 in retail context because non-retail channels dump into hour 0.
   // We include hour 0 but label it to clarify: "00:00 / non-timed".
@@ -1776,6 +1812,17 @@ function renderHourly(data) {
 
 // ============ RENDER SPG ============
 function renderSpg(data) {
+  // SPG leaderboard is retail-only (non-retail channels have no SPG attribution).
+  const wrap = document.getElementById('spgRetailContent');
+  const empty = document.getElementById('spgEmpty');
+  if (state.channel !== 'retail') {
+    if (wrap) wrap.style.display = 'none';
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (wrap) wrap.style.display = '';
+  if (empty) empty.style.display = 'none';
+
   const list = (data.bySpg || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
   const kpis = data.kpis || {};
   const retailTxn = Number(kpis.transactions) || 0;
@@ -1805,8 +1852,8 @@ function renderSpg(data) {
       <td class="right strong">${fmtRpShort(rev)}</td>
       <td class="right muted">${trx ? fmtNum(trx) : naDash}</td>
       <td class="right muted">${trx ? upt.toFixed(1) : naDash}</td>
-      <td class="right muted">${pairs ? fmtRpShort(asp) : naDash}</td>
-      <td class="right muted">${trx ? fmtRpShort(atv) : naDash}</td>
+      <td class="right muted">${pairs ? fmtRpExact(asp) : naDash}</td>
+      <td class="right muted">${trx ? fmtRpExact(atv) : naDash}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="9" class="empty" style="border:none;padding:28px;">Tidak ada SPG untuk periode/channel ini.</td></tr>`;
 
@@ -1963,19 +2010,21 @@ async function renderTarget() {
     const toMonth   = toD.getMonth();
     const activeMonths = MONTH_KEYS.filter((_, i) => i >= fromMonth && i <= toMonth);
 
-    // Actual revenue map from current payload
+    // Actual revenue list from current payload — kept as array so we can substring-match
+    // (target name "Pepito" should match byEntity "Zuma Pepito Bali").
     const rev = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
-    const actualMap = {};
-    rev.forEach(e => {
-      actualMap[String(e.name || '').toLowerCase().trim()] = Number(e.revenue) || 0;
-    });
 
     // Compute per-store target = sum of months in range
     const enriched = targets.map(t => {
       const storeName = t.store || t.toko || '-';
       const area = t.area || '-';
       const target = activeMonths.reduce((s, m) => s + (Number(t[m]) || 0), 0);
-      const actual = actualMap[String(storeName).toLowerCase().trim()] || 0;
+      const b = String(storeName).toLowerCase().trim();
+      const match = rev.find(e => {
+        const a = String(e.name || '').toLowerCase().trim();
+        return a && b && (a === b || a.includes(b) || b.includes(a));
+      });
+      const actual = match ? (Number(match.revenue) || 0) : 0;
       const gap = actual - target;
       const pct = target ? (actual / target * 100) : 0;
       return { storeName, area, target, actual, gap, pct };

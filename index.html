@@ -878,7 +878,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.24 · build 2026-04-23 · kid-size range encoding fix — kode_mix falls back to iseller.kodemix</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.25 · build 2026-04-23 · Target tab split: kiri Sudah Achieve (≥100%), kanan Belum Achieve (&lt;100%)</span>
   </footer>
 
 </div>
@@ -918,7 +918,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.24';
+const APP_VERSION = 'v1.25';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2296,7 +2296,12 @@ async function renderTarget() {
     const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;
     const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
 
-    const trackedRows = tracked.map((r, i) => {
+    // Split tracked stores into Achieved (≥100%) vs Not-yet-achieved (<100%).
+    // Kiri = sudah achieve, kanan = belum achieve. Untracked dipindah ke section kecil di bawah.
+    const achieved = tracked.filter(r => r.pct >= 100).sort((a,b) => b.pct - a.pct);  // best first on the left
+    const notYet   = tracked.filter(r => r.pct < 100 || !r.target).sort((a,b) => a.pct - b.pct);  // worst first so attention naturally falls on stores that need help
+
+    const renderAchvRow = (r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
       const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
       return `<tr style="background:${bg};">
@@ -2308,7 +2313,10 @@ async function renderTarget() {
         <td class="right">${fmtNum(r.actualQty)}</td>
         <td class="right" style="color:${color};font-weight:700;">${r.target ? r.pct.toFixed(1)+'%' : '—'}</td>
       </tr>`;
-    }).join('');
+    };
+
+    const achievedRows = achieved.map(renderAchvRow).join('');
+    const notYetRows   = notYet.map(renderAchvRow).join('');
 
     const untrackedRows = untracked.map((r, i) => `
       <tr>
@@ -2319,9 +2327,9 @@ async function renderTarget() {
         <td class="right">${fmtNum(r.actualQty)}</td>
       </tr>`).join('');
 
-    const trackedCard = tracked.length ? `
+    const achvTable = (title, rows, count) => `
       <div class="card">
-        <div class="card-header"><div class="card-title">✅ Tracked · ada target (${tracked.length})</div></div>
+        <div class="card-header"><div class="card-title">${title} (${count})</div></div>
         <div class="table-wrap" style="max-height:560px;overflow:auto;">
           <table class="data">
             <thead><tr>
@@ -2333,15 +2341,18 @@ async function renderTarget() {
               <th class="right">Qty</th>
               <th class="right">Achv</th>
             </tr></thead>
-            <tbody>${trackedRows}</tbody>
+            <tbody>${rows || `<tr><td colspan="7" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
           </table>
         </div>
-      </div>` : '';
+      </div>`;
+
+    const achievedCard = achvTable('✅ Sudah Achieve · ≥100%', achievedRows, achieved.length);
+    const notYetCard   = achvTable('⚠️ Belum Achieve · &lt;100%', notYetRows, notYet.length);
 
     const untrackedCard = untracked.length ? `
-      <div class="card">
-        <div class="card-header"><div class="card-title">⚠️ Untracked · belum ada target (${untracked.length})</div></div>
-        <div class="table-wrap" style="max-height:560px;overflow:auto;">
+      <div class="card" style="margin-top:12px;">
+        <div class="card-header"><div class="card-title">🏷️ ${nameLabel} tanpa target di sheet (${untracked.length})</div></div>
+        <div class="table-wrap" style="max-height:360px;overflow:auto;">
           <table class="data">
             <thead><tr>
               <th class="center" style="width:30px;">#</th>
@@ -2361,13 +2372,14 @@ async function renderTarget() {
         <div class="kpi-card"><div class="kpi-label">Revenue (tracked)</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totRev)}</span></span><div class="kpi-sub">actual</div></div>
         <div class="kpi-card"><div class="kpi-label">Qty (tracked)</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(totQty)}</span></span><div class="kpi-sub">pairs</div></div>
         <div class="kpi-card"><div class="kpi-label">Achievement</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totPct>=100?'#16a34a':totPct>=80?'#f59e0b':'#dc2626'};">${totPct.toFixed(1)}%</span></span><div class="kpi-sub">overall</div></div>
-        <div class="kpi-card"><div class="kpi-label">✅ On Track (≥100%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${onTrack}</span></span><div class="kpi-sub">toko</div></div>
-        <div class="kpi-card"><div class="kpi-label">⚠️ Behind (&lt;80%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${behind}</span></span><div class="kpi-sub">⚡ ${atRisk} at risk</div></div>
+        <div class="kpi-card"><div class="kpi-label">✅ Sudah Achieve</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${achieved.length}</span></span><div class="kpi-sub">toko ≥100%</div></div>
+        <div class="kpi-card"><div class="kpi-label">⚠️ Belum Achieve</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${notYet.length}</span></span><div class="kpi-sub">toko &lt;100%</div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
-        <div style="min-width:0;">${trackedCard}</div>
-        <div style="min-width:0;">${untrackedCard}</div>
-      </div>`;
+        <div style="min-width:0;">${achievedCard}</div>
+        <div style="min-width:0;">${notYetCard}</div>
+      </div>
+      ${untrackedCard}`;
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;
   }

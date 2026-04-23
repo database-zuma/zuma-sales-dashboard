@@ -846,12 +846,13 @@ table.data tfoot td {
     <div class="card" style="margin-bottom:12px;">
       <div class="card-header">
         <div class="card-title">Breakdown Promo per Dimensi</div>
-        <select id="promoDimSelect" class="filter-select" style="max-width:180px;">
+        <select id="promoDimSelect" class="filter-select" style="max-width:200px;">
+          <option value="byPromoCampaign" selected>🎯 Campaign / Nama Promo</option>
           <option value="byPromoChannel">Channel</option>
           <option value="byPromoArea">Area</option>
           <option value="byPromoOutlet">Outlet / Toko</option>
           <option value="byPromoSpg">SPG</option>
-          <option value="byPromoSku" selected>SKU</option>
+          <option value="byPromoSku">SKU</option>
           <option value="byPromoGender">Gender</option>
           <option value="byPromoSeries">Series</option>
           <option value="byPromoTier">Tier</option>
@@ -878,7 +879,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.26 · build 2026-04-23 · refresh() swallows AbortError/superseded silently — no more spurious "undefined" error banner</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.27 · build 2026-04-23 · Promo tab: Campaign Breakdown (nama promo dari iSeller) with % share bar</span>
   </footer>
 
 </div>
@@ -918,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.26';
+const APP_VERSION = 'v1.27';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2013,13 +2014,23 @@ function renderPromo(data) {
   const renderDim = (dimKey) => {
     const items = (data[dimKey] || []).slice().sort((a,b) => (b.discount||0) - (a.discount||0));
     const headers = {
+      byPromoCampaign: ['Campaign'],
       byPromoChannel: ['Channel'], byPromoArea: ['Area'],
       byPromoOutlet: ['Outlet', 'Channel', 'Area'], byPromoSpg: ['SPG', 'Outlet'],
       byPromoSku: ['SKU', 'Nama Barang'], byPromoGender: ['Gender'],
       byPromoSeries: ['Series'], byPromoTier: ['Tier'], byPromoVersion: ['Version'],
     };
     const extraCols = headers[dimKey] || ['Name'];
-    const head = `
+    // Campaign dimension uses the iseller-dashboard visual: QTY Promo + Revenue + %share-bar.
+    const isCampaign = dimKey === 'byPromoCampaign';
+    const head = isCampaign ? `
+      <th class="center" style="width:30px;">#</th>
+      <th>Campaign</th>
+      <th class="right">QTY Promo</th>
+      <th class="right">Revenue</th>
+      <th class="right">Diskon Rp</th>
+      <th class="right">% Diskon</th>
+      <th style="width:180px;">% Share Revenue</th>` : `
       <th class="center" style="width:30px;">#</th>
       ${extraCols.map(c => `<th>${c}</th>`).join('')}
       <th class="right">Revenue</th>
@@ -2029,18 +2040,41 @@ function renderPromo(data) {
     document.getElementById('promoDimHead').innerHTML = head;
 
     if (!items.length) {
-      document.getElementById('promoDimBody').innerHTML = `<tr><td colspan="${extraCols.length+5}" class="empty" style="border:none;padding:28px;">Tidak ada data diskon untuk dimensi ini.</td></tr>`;
+      const cspan = isCampaign ? 7 : extraCols.length + 5;
+      document.getElementById('promoDimBody').innerHTML = `<tr><td colspan="${cspan}" class="empty" style="border:none;padding:28px;">Tidak ada data campaign untuk periode/channel ini.</td></tr>`;
       document.getElementById('promoDimFoot').innerHTML = '';
       return;
     }
 
     const warnColor = (pct) => pct > 25 ? 'color:#dc2626;font-weight:600;' : pct > 10 ? 'color:#f59e0b;' : '';
+    const totalCampRev = isCampaign ? items.reduce((a,c) => a + (Number(c.revenue)||0), 0) : 0;
+
     const rowsHtml = items.slice(0, 100).map((r,i) => {
       const revenue = Number(r.revenue) || 0;
       const discount = Number(r.discount) || 0;
       const discPct = Number(r.discount_pct) || 0;
       const rowsPromoCnt = Number(r.rows_promo) || 0;
       const rowsTotalCnt = Number(r.rows_total) || 0;
+      if (isCampaign) {
+        const qty = Number(r.pairs) || 0;
+        const share = totalCampRev > 0 ? (revenue / totalCampRev * 100) : 0;
+        return `<tr>
+          <td class="center muted">${i+1}</td>
+          <td class="strong">${escapeHtml(String(r.name || '-'))}</td>
+          <td class="right">${fmtNum(qty)}</td>
+          <td class="right">${fmtRpShort(revenue)}</td>
+          <td class="right strong">${fmtRpShort(discount)}</td>
+          <td class="right" style="${warnColor(discPct)}">${discPct.toFixed(2)}%</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;background:#e5e7eb;height:6px;border-radius:3px;overflow:hidden;min-width:80px;">
+                <div style="height:100%;background:#00E273;border-radius:3px;width:${Math.min(100,share).toFixed(1)}%;"></div>
+              </div>
+              <span style="font-size:10px;color:#64748b;min-width:42px;text-align:right;">${share.toFixed(1)}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }
       const extraCells = dimKey === 'byPromoOutlet'
         ? [String(r.channel||'-').toUpperCase(), r.area||'-']
         : dimKey === 'byPromoSpg'
@@ -2064,10 +2098,18 @@ function renderPromo(data) {
 
     const totRev = items.reduce((a,c) => a + (Number(c.revenue)||0), 0);
     const totDisc = items.reduce((a,c) => a + (Number(c.discount)||0), 0);
+    const totQty = items.reduce((a,c) => a + (Number(c.pairs)||0), 0);
     const totRowsPromo = items.reduce((a,c) => a + (Number(c.rows_promo)||0), 0);
     const totRowsTotal = items.reduce((a,c) => a + (Number(c.rows_total)||0), 0);
     const totPct = (totRev + totDisc) > 0 ? totDisc/(totRev+totDisc)*100 : 0;
-    document.getElementById('promoDimFoot').innerHTML = `<tr>
+    document.getElementById('promoDimFoot').innerHTML = isCampaign ? `<tr>
+      <td colspan="2" class="center">TOTAL</td>
+      <td class="right">${fmtNum(totQty)}</td>
+      <td class="right">${fmtRpShort(totRev)}</td>
+      <td class="right">${fmtRpShort(totDisc)}</td>
+      <td class="right">${totPct.toFixed(2)}%</td>
+      <td></td>
+    </tr>` : `<tr>
       <td colspan="${extraCols.length+1}" class="center">TOTAL</td>
       <td class="right">${fmtRpShort(totRev)}</td>
       <td class="right">${fmtRpShort(totDisc)}</td>

@@ -24,8 +24,9 @@
   --border-soft: #f1f5f9;
   --muted: #f8fafc;
   --fg: #0f172a;
-  --fg-muted: #64748b;
-  --fg-soft: #94a3b8;
+  /* Bump muted+soft darker per user — table body/metadata was too washed out */
+  --fg-muted: #1f2937;
+  --fg-soft:  #334155;
   --danger: #ef4444;
   --warning: #f59e0b;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
@@ -848,7 +849,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.7 · build 2026-04-23 · auto-invalidate stale cache on version change</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.8 · build 2026-04-23 · darker text contrast</span>
   </footer>
 
 </div>
@@ -888,7 +889,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v4:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

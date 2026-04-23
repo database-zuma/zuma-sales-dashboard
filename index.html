@@ -878,7 +878,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.25 · build 2026-04-23 · Target tab split: kiri Sudah Achieve (≥100%), kanan Belum Achieve (&lt;100%)</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.26 · build 2026-04-23 · refresh() swallows AbortError/superseded silently — no more spurious "undefined" error banner</span>
   </footer>
 
 </div>
@@ -918,7 +918,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.25';
+const APP_VERSION = 'v1.26';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2984,11 +2984,15 @@ async function refresh({ reloadData = true } = {}) {
     state.lastUpdate = new Date();
     document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
   } catch (e) {
-    if (e.superseded) { return; }  // newer fetch in flight, skip — no error banner
-    console.error(e);
-    showStatus(`❌ Gagal memuat: ${e.message}`, 'error');
+    // Bail early on cancelled/superseded fetches — they're expected during fast filter switching.
+    if (e && (e.superseded || e.name === 'AbortError' || String(e?.message || '').includes('SUPERSEDED'))) {
+      return;
+    }
+    console.error('[refresh]', e);
+    const msg = (e && (e.message || e.detail)) || String(e) || 'unknown error';
+    showStatus(`❌ Gagal memuat: ${msg}`, 'error');
     document.getElementById('globalError').style.display = '';
-    document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(e.message)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
+    document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(msg)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
     btn.disabled = false;
     loadProgress._subs.delete(progressHandler);

@@ -835,12 +835,12 @@ table.data tfoot td {
   <!-- ========= TAB: PROMO ========= -->
   <section class="tab-content" id="tab-promo">
     <div class="kpi-grid">
-      <div class="kpi-card kpi-primary"><div class="kpi-label">Total Diskon</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiDisc">—</span></span><div class="kpi-sub" id="promoKpiDiscPct">&nbsp;</div></div>
-      <div class="kpi-card"><div class="kpi-label">% dari Omzet</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiPct">—</span></span><div class="kpi-sub">revenue share</div></div>
-      <div class="kpi-card"><div class="kpi-label">Txn Pakai Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiTxn">—</span></span><div class="kpi-sub" id="promoKpiTxnRate">&nbsp;</div></div>
-      <div class="kpi-card"><div class="kpi-label">Rate Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiRate">—</span></span><div class="kpi-sub">dari total txn</div></div>
+      <div class="kpi-card kpi-primary"><div class="kpi-label">🎯 Revenue Real Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiRpRev">—</span></span><div class="kpi-sub" id="promoKpiRpShare">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">🎯 Diskon Real Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiRpDisc">—</span></span><div class="kpi-sub" id="promoKpiRpDiscPct">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Txn Real Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiTxn">—</span></span><div class="kpi-sub" id="promoKpiTxnRate">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Outlet Real Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiOutlets">—</span></span><div class="kpi-sub" id="promoKpiOutletsSub">&nbsp;</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Diskon (semua)</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiDisc">—</span></span><div class="kpi-sub" id="promoKpiPct">incl. harga coret</div></div>
       <div class="kpi-card"><div class="kpi-label">Avg Diskon/Row</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiAvg">—</span></span><div class="kpi-sub">per item kena</div></div>
-      <div class="kpi-card"><div class="kpi-label">Outlet Pakai Promo</div><span class="kpi-value-wrap"><span class="kpi-value" id="promoKpiOutlets">—</span></span><div class="kpi-sub" id="promoKpiOutletsSub">&nbsp;</div></div>
     </div>
 
     <div class="card" style="margin-bottom:12px;">
@@ -879,7 +879,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.28 · build 2026-04-23 · Campaign Breakdown: pakai jumlah_diskon_per_item + fallback ke kode_diskon/catatan (RK40 dst sekarang visible)</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.29 · build 2026-04-23 · KPI Real Promo share (exclude harga coret) + campaign normalized (RK40 digabung)</span>
   </footer>
 
 </div>
@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.28';
+const APP_VERSION = 'v1.29';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1995,21 +1995,26 @@ function renderPromo(data) {
   const totalDisc = Number(p.totalDiscount) || 0;
   const totalGross = Number(p.totalGross) || 0;
   const txnTotal = Number(p.txnTotal) || 0;
-  const txnPromo = Number(p.txnWithPromo) || 0;
-  const rowsPromo = Number(p.rowsWithPromo) || 0;
-  const rowsTotal = Number(p.rowsTotal) || 0;
   const outletsTotal = Number(p.outletsTotal) || 0;
-  const outletsPromo = Number(p.outletsWithPromo) || 0;
+  // Real-promo metrics (scoped to rows with campaign tag — excludes harga-coret / permanent markdown)
+  const rpRev = Number(p.realPromoRevenue) || 0;
+  const rpDisc = Number(p.realPromoDiscount) || 0;
+  const rpGross = Number(p.realPromoGross) || 0;
+  const rpTxn = Number(p.realPromoTxn) || 0;
+  const rpOutlets = Number(p.realPromoOutlets) || 0;
 
-  document.getElementById('promoKpiDisc').textContent = fmtRpShort(totalDisc);
-  document.getElementById('promoKpiDiscPct').textContent = fmtRp(totalDisc);
-  document.getElementById('promoKpiPct').textContent = totalGross ? (totalDisc/totalGross*100).toFixed(2) + '%' : '—';
-  document.getElementById('promoKpiTxn').textContent = txnPromo ? fmtNum(txnPromo) : '—';
-  document.getElementById('promoKpiTxnRate').textContent = txnTotal ? `dari ${fmtNum(txnTotal)} txn` : '—';
-  document.getElementById('promoKpiRate').textContent = rowsTotal ? ((rowsPromo/rowsTotal)*100).toFixed(1) + '%' : '—';
-  document.getElementById('promoKpiAvg').textContent = p.avgDiscountPerPromoRow ? fmtRpShort(p.avgDiscountPerPromoRow) : '—';
-  document.getElementById('promoKpiOutlets').textContent = fmtNum(outletsPromo);
-  document.getElementById('promoKpiOutletsSub').textContent = outletsTotal ? `dari ${fmtNum(outletsTotal)} outlet` : '';
+  const el = (id) => document.getElementById(id);
+  el('promoKpiRpRev').textContent = fmtRpShort(rpRev);
+  el('promoKpiRpShare').textContent = totalRev ? `${(rpRev/totalRev*100).toFixed(2)}% dari Rp${fmtRpShort(totalRev).replace('Rp ','')}` : '—';
+  el('promoKpiRpDisc').textContent = fmtRpShort(rpDisc);
+  el('promoKpiRpDiscPct').textContent = rpGross ? `${(rpDisc/rpGross*100).toFixed(1)}% dari gross real promo` : '—';
+  el('promoKpiTxn').textContent = rpTxn ? fmtNum(rpTxn) : '—';
+  el('promoKpiTxnRate').textContent = txnTotal ? `${(rpTxn/txnTotal*100).toFixed(1)}% dari ${fmtNum(txnTotal)} txn` : '—';
+  el('promoKpiOutlets').textContent = fmtNum(rpOutlets);
+  el('promoKpiOutletsSub').textContent = outletsTotal ? `dari ${fmtNum(outletsTotal)} outlet` : '';
+  el('promoKpiDisc').textContent = fmtRpShort(totalDisc);
+  el('promoKpiPct').textContent = `incl. harga coret · ${totalGross ? (totalDisc/totalGross*100).toFixed(2) : '—'}% dari gross`;
+  el('promoKpiAvg').textContent = p.avgDiscountPerPromoRow ? fmtRpShort(p.avgDiscountPerPromoRow) : '—';
 
   const renderDim = (dimKey) => {
     const items = (data[dimKey] || []).slice().sort((a,b) => (b.discount||0) - (a.discount||0));

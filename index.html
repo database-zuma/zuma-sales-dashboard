@@ -867,7 +867,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.17 · build 2026-04-23 · cascade debug logging (see console for [cascade] + [ref])</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.18 · build 2026-04-23 · cascade debug: log raw fetch response (see [fetch] raw stores)</span>
   </footer>
 
 </div>
@@ -907,7 +907,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.17';
+const APP_VERSION = 'v1.18';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1143,8 +1143,11 @@ async function loadReferenceOptions() {
     channel: state.channel, from: state.from, to: state.to,
     sku_only: String(sandalOnly),
   });
+  const url = '/api/sales/filter-options?' + qs.toString();
   try {
-    const data = await fetchAPI('/api/sales/filter-options?' + qs.toString());
+    const data = await fetchAPI(url);
+    console.log('[fetch] ', url);
+    console.log('[fetch] raw stores[0..2]:', (data && data.stores || []).slice(0,3));
     state.referenceOptions = data || {};
   } catch (e) {
     console.warn('loadReferenceOptions failed:', e.message);

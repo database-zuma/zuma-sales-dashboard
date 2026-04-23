@@ -859,7 +859,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.9 · build 2026-04-23 · ASP/ATV exact + size labels + retail-only hourly/SPG + online target + fuzzy name match</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.10 · build 2026-04-23 · target tab: channel filter + Qty column + Online aggregate</span>
   </footer>
 
 </div>
@@ -899,7 +899,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.9';
+const APP_VERSION = 'v1.10';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1988,11 +1988,17 @@ function renderPromo(data) {
 // ============ TARGET (lazy fetch) ============
 async function renderTarget() {
   const wrap = document.getElementById('targetContent');
+
+  // Global channel: target composition is ambiguous (mixes retail+online+consig+wholesale
+  // with wildly different target semantics). Easier to force user to pick a specific channel.
+  if (state.channel === 'global') {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Pilih channel spesifik (Retail / Online / Consig / Wholesale) untuk melihat target.</div>';
+    return;
+  }
+
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target...</div>';
   try {
     const data = await fetchAPI('/api/targets');
-    // Response shape: { "store-key-1": {store, area, jan, feb, ..., des}, "store-key-2": {...}, ... }
-    // Or could be list — normalize to array.
     const targets = Array.isArray(data)
       ? data
       : Object.values(data || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
@@ -2006,42 +2012,66 @@ async function renderTarget() {
     const MONTH_KEYS = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
     const fromD = new Date(state.from);
     const toD   = new Date(state.to);
-    const fromMonth = fromD.getMonth();   // 0-11
-    const toMonth   = toD.getMonth();
-    const activeMonths = MONTH_KEYS.filter((_, i) => i >= fromMonth && i <= toMonth);
+    const activeMonths = MONTH_KEYS.filter((_, i) => i >= fromD.getMonth() && i <= toD.getMonth());
+    const monthLabel = activeMonths.map(m => m.toUpperCase()).join('+');
 
-    // Actual revenue list from current payload — kept as array so we can substring-match
-    // (target name "Pepito" should match byEntity "Zuma Pepito Bali").
-    const rev = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
+    const byEntity = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
+    const normalize = s => String(s || '').toLowerCase().trim();
 
-    // Compute per-store target = sum of months in range
-    const enriched = targets.map(t => {
-      const storeName = t.store || t.toko || '-';
-      const area = t.area || '-';
-      const target = activeMonths.reduce((s, m) => s + (Number(t[m]) || 0), 0);
-      const b = String(storeName).toLowerCase().trim();
-      const match = rev.find(e => {
-        const a = String(e.name || '').toLowerCase().trim();
-        return a && b && (a === b || a.includes(b) || b.includes(a));
-      });
-      const actual = match ? (Number(match.revenue) || 0) : 0;
-      const gap = actual - target;
-      const pct = target ? (actual / target * 100) : 0;
-      return { storeName, area, target, actual, gap, pct };
-    }).filter(r => r.target > 0 || r.actual > 0);
+    // Match helper: two names are considered the same entity if either contains the other
+    // (substring, case-insensitive). Handles "Pepito" in sheet vs "Zuma Pepito Bali" in data.
+    const matches = (a, b) => {
+      const x = normalize(a), y = normalize(b);
+      return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+    };
+
+    let enriched;
+
+    if (state.channel === 'online') {
+      // Online target is a single aggregate row ("ONLINE") — sum everything in byEntity online
+      // against the single target row.
+      const onlineTargetRow = targets.find(t => normalize(t.store || t.toko) === 'online');
+      if (!onlineTargetRow) {
+        wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:40px;">Target Online belum ada di Google Sheet.</div>';
+        return;
+      }
+      const target = activeMonths.reduce((s, m) => s + (Number(onlineTargetRow[m]) || 0), 0);
+      const actualRev = byEntity.reduce((s, e) => s + (Number(e.revenue) || 0), 0);
+      const actualQty = byEntity.reduce((s, e) => s + (Number(e.pairs) || 0), 0);
+      const pct = target ? (actualRev / target * 100) : 0;
+      enriched = [{ storeName: 'Online (Shopee/Tokopedia/TikTok/Lazada/Blibli/Bukalapak)', area: '-', target, actualRev, actualQty, pct }];
+    } else {
+      // Retail / Consig / Wholesale: keep only targets that match an entity in this channel's byEntity.
+      enriched = targets.map(t => {
+        const storeName = t.store || t.toko || '-';
+        const area = t.area || '-';
+        const target = activeMonths.reduce((s, m) => s + (Number(t[m]) || 0), 0);
+        const match = byEntity.find(e => matches(e.name, storeName));
+        if (!match) return null;   // not in this channel
+        const actualRev = Number(match.revenue) || 0;
+        const actualQty = Number(match.pairs) || 0;
+        const pct = target ? (actualRev / target * 100) : 0;
+        return { storeName, area: match.area || area, target, actualRev, actualQty, pct };
+      }).filter(Boolean);
+    }
+
+    if (!enriched.length) {
+      wrap.innerHTML = `<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Tidak ada target yang match dengan entity channel <strong>${state.channel}</strong> di periode ini.</div>`;
+      return;
+    }
 
     enriched.sort((a, b) => b.target - a.target);
 
     // Summary KPIs
     const totTarget = enriched.reduce((s, r) => s + r.target, 0);
-    const totActual = enriched.reduce((s, r) => s + r.actual, 0);
-    const totGap    = totActual - totTarget;
-    const totPct    = totTarget ? (totActual / totTarget * 100) : 0;
+    const totRev    = enriched.reduce((s, r) => s + r.actualRev, 0);
+    const totQty    = enriched.reduce((s, r) => s + r.actualQty, 0);
+    const totPct    = totTarget ? (totRev / totTarget * 100) : 0;
     const onTrack = enriched.filter(r => r.pct >= 100).length;
     const atRisk  = enriched.filter(r => r.pct >= 80 && r.pct < 100).length;
     const behind  = enriched.filter(r => r.pct < 80 && r.target > 0).length;
 
-    const monthLabel = activeMonths.map(m => m.toUpperCase()).join('+');
+    const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;
 
     const rowsHtml = enriched.map((r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
@@ -2051,32 +2081,32 @@ async function renderTarget() {
         <td class="strong">${escapeHtml(String(r.storeName))}</td>
         <td class="muted">${escapeHtml(String(r.area))}</td>
         <td class="right">${r.target ? fmtRpShort(r.target) : '—'}</td>
-        <td class="right strong">${fmtRpShort(r.actual)}</td>
-        <td class="right" style="color:${r.gap >= 0 ? '#16a34a' : '#dc2626'};">${r.gap >= 0 ? '+' : ''}${fmtRpShort(r.gap)}</td>
+        <td class="right strong">${fmtRpShort(r.actualRev)}</td>
+        <td class="right">${fmtNum(r.actualQty)}</td>
         <td class="right" style="color:${color};font-weight:700;">${r.target ? r.pct.toFixed(1)+'%' : '—'}</td>
       </tr>`;
     }).join('');
 
     wrap.innerHTML = `
       <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
-        <div class="kpi-card kpi-primary"><div class="kpi-label">Target (${monthLabel})</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totTarget)}</span></span><div class="kpi-sub">total periode</div></div>
-        <div class="kpi-card"><div class="kpi-label">Actual</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totActual)}</span></span><div class="kpi-sub">dari byEntity</div></div>
-        <div class="kpi-card"><div class="kpi-label">Gap</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totGap>=0?'#16a34a':'#dc2626'};">${totGap>=0?'+':''}${fmtRpShort(totGap)}</span></span><div class="kpi-sub">actual − target</div></div>
+        <div class="kpi-card kpi-primary"><div class="kpi-label">Target · ${chLabel} (${monthLabel})</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totTarget)}</span></span><div class="kpi-sub">total periode</div></div>
+        <div class="kpi-card"><div class="kpi-label">Revenue</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totRev)}</span></span><div class="kpi-sub">actual</div></div>
+        <div class="kpi-card"><div class="kpi-label">Qty</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(totQty)}</span></span><div class="kpi-sub">pairs</div></div>
         <div class="kpi-card"><div class="kpi-label">Achievement</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totPct>=100?'#16a34a':totPct>=80?'#f59e0b':'#dc2626'};">${totPct.toFixed(1)}%</span></span><div class="kpi-sub">overall</div></div>
         <div class="kpi-card"><div class="kpi-label">✅ On Track (≥100%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${onTrack}</span></span><div class="kpi-sub">toko</div></div>
         <div class="kpi-card"><div class="kpi-label">⚠️ Behind (&lt;80%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${behind}</span></span><div class="kpi-sub">⚡ ${atRisk} at risk</div></div>
       </div>
       <div class="card">
-        <div class="card-header"><div class="card-title">Target vs Actual · ${monthLabel} 2026 · ${enriched.length} toko</div></div>
+        <div class="card-header"><div class="card-title">Target vs Actual · ${chLabel} · ${monthLabel} 2026 · ${enriched.length} entity</div></div>
         <div class="table-wrap" style="max-height:560px;overflow:auto;">
           <table class="data">
             <thead><tr>
               <th class="center" style="width:30px;">#</th>
-              <th>Toko</th>
+              <th>${state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko'}</th>
               <th>Area</th>
               <th class="right">Target</th>
-              <th class="right">Actual</th>
-              <th class="right">Gap</th>
+              <th class="right">Revenue</th>
+              <th class="right">Qty</th>
               <th class="right">Achievement</th>
             </tr></thead>
             <tbody>${rowsHtml}</tbody>

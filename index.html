@@ -882,7 +882,7 @@ const cache = {};
 
 // ============ LOCALSTORAGE CACHE (10min TTL) ============
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const CACHE_PREFIX = 'zuma-sales-v1:';
+const CACHE_PREFIX = 'zuma-sales-v2:';
 function lsGet(key) {
   try {
     const raw = localStorage.getItem(CACHE_PREFIX + key);

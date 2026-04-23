@@ -879,7 +879,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.29 · build 2026-04-23 · KPI Real Promo share (exclude harga coret) + campaign normalized (RK40 digabung)</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.30 · build 2026-04-23 · Campaign empty-state arahkan ke Retail/Event channel</span>
   </footer>
 
 </div>
@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.29';
+const APP_VERSION = 'v1.30';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2046,7 +2046,11 @@ function renderPromo(data) {
 
     if (!items.length) {
       const cspan = isCampaign ? 7 : extraCols.length + 5;
-      document.getElementById('promoDimBody').innerHTML = `<tr><td colspan="${cspan}" class="empty" style="border:none;padding:28px;">Tidak ada data campaign untuk periode/channel ini.</td></tr>`;
+      const isPosChannel = state.channel === 'retail' || state.channel === 'event';
+      const emptyMsg = (isCampaign && !isPosChannel)
+        ? `Campaign breakdown hanya tersedia untuk channel <strong>Retail</strong> dan <strong>Event</strong> (data dari iSeller POS: catatan_per_item + kode_diskon). Pilih channel Retail atau Event untuk melihat RK40, NATARU25, CUSTOM 40%, dll.`
+        : `Tidak ada data ${isCampaign ? 'campaign' : 'promo'} untuk periode/channel ini.`;
+      document.getElementById('promoDimBody').innerHTML = `<tr><td colspan="${cspan}" class="empty" style="border:none;padding:32px 20px;line-height:1.55;">${emptyMsg}</td></tr>`;
       document.getElementById('promoDimFoot').innerHTML = '';
       return;
     }

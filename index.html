@@ -264,16 +264,25 @@ html, body {
   margin-top: 3px; max-height: 320px; overflow-y: auto;
 }
 .sku-suggestion {
-  padding: 8px 10px; cursor: pointer; font-size: 11.5px;
-  border-bottom: 1px solid var(--border-soft);
-  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; cursor: pointer; font-size: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex; align-items: center; gap: 10px;
+  transition: background 0.1s;
+  background: #fff;
 }
-.sku-suggestion:hover, .sku-suggestion.active { background: var(--muted); }
+.sku-suggestion:hover, .sku-suggestion.active { background: #f0f9ff; }
+.sku-suggestion-badge {
+  background: #0284c7; color: #fff;
+  padding: 3px 8px; border-radius: 6px;
+  font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700;
+  white-space: nowrap; text-transform: uppercase;
+  flex-shrink: 0;
+}
 .sku-suggestion-main { flex: 1; min-width: 0; }
-.sku-suggestion-code { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--fg); font-weight: 600; }
-.sku-suggestion-kmix { font-family: ui-monospace, monospace; font-size: 10px; color: var(--fg-muted); margin-left: 6px; }
-.sku-suggestion-name { font-size: 11.5px; color: var(--fg); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sku-suggestion-meta { font-size: 10.5px; color: var(--fg-soft); text-align: right; flex-shrink: 0; white-space: nowrap; }
+.sku-suggestion-name { font-size: 12px; font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sku-suggestion-sub { font-size: 10.5px; color: #94a3b8; margin-top: 2px; }
+.sku-suggestion-meta { font-size: 10.5px; color: #64748b; text-align: right; flex-shrink: 0; white-space: nowrap; }
+.sku-suggestion-footer { padding: 8px 14px; text-align: center; font-size: 10.5px; color: #94a3b8; background: #f8fafc; }
 
 /* ======= TAB NAV ======= pill navy on active (not underline — differentiates from iseller) */
 .tab-nav {
@@ -869,7 +878,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.21 · build 2026-04-23 · SKU typeahead shows kode + kode_mix + nama barang (line-wrap, fallback if nama kosong)</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.22 · build 2026-04-23 · SKU typeahead styled like inventory dashboard + request cancellation for fast filter switching</span>
   </footer>
 
 </div>
@@ -909,7 +918,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.21';
+const APP_VERSION = 'v1.22';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -940,21 +949,37 @@ function lsInvalidate() {
   } catch {}
 }
 
-// ============ FETCH (with timeout + clear errors) ============
-async function fetchAPI(path, { timeoutMs = 45000 } = {}) {
+// ============ FETCH (with timeout + clear errors + group cancellation) ============
+// Groups allow a new request on the same group to cancel the previous in-flight one.
+// e.g. 'dashboard' for /api/sales/dashboard — stops old filters from overwriting new.
+const _fetchGroups = new Map();
+
+async function fetchAPI(path, { timeoutMs = 45000, group = null } = {}) {
   const ctl = new AbortController();
+  if (group) {
+    const prev = _fetchGroups.get(group);
+    if (prev) { try { prev.abort('superseded'); } catch {} }
+    _fetchGroups.set(group, ctl);
+  }
   const timer = setTimeout(() => ctl.abort(new Error('TIMEOUT after ' + (timeoutMs/1000) + 's')), timeoutMs);
   try {
     const res = await fetch(API_BASE + path, { headers: { 'X-API-Key': API_KEY }, signal: ctl.signal });
     if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
     return res.json();
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('Fetch timeout (' + (timeoutMs/1000) + 's) — network/VPS unreachable: ' + path);
-    // TypeError: Failed to fetch = CORS or network
+    if (e.name === 'AbortError') {
+      // Superseded (user kept clicking filters) — bubble up a tagged error so callers
+      // can silently skip rendering stale results. Also covers timeout abort.
+      const superseded = typeof ctl.signal?.reason === 'string' && ctl.signal.reason === 'superseded';
+      const err = new Error(superseded ? 'SUPERSEDED' : 'Fetch timeout (' + (timeoutMs/1000) + 's)');
+      err.superseded = superseded;
+      throw err;
+    }
     if (e instanceof TypeError) throw new Error('Network/CORS error: ' + path + ' — cek koneksi atau firewall');
     throw e;
   } finally {
     clearTimeout(timer);
+    if (group && _fetchGroups.get(group) === ctl) _fetchGroups.delete(group);
   }
 }
 
@@ -1011,7 +1036,7 @@ async function loadChannel(channel, from, to) {
   setProgress(channel, 'loading');
   const t0 = performance.now();
   try {
-    const data = await fetchAPI('/api/sales/dashboard?' + qs.toString());
+    const data = await fetchAPI('/api/sales/dashboard?' + qs.toString(), { group: 'dashboard' });
     const dt = Math.round((performance.now() - t0) / 100) / 10;
     setProgress(channel, { ok: true, dt });
     cache[cacheKey] = data;
@@ -1159,10 +1184,11 @@ async function loadReferenceOptions() {
     return;
   }
   try {
-    const data = await fetchAPI(url);
+    const data = await fetchAPI(url, { group: 'ref-options' });
     state.referenceOptions = data || {};
     _refCache.set(cacheKey, state.referenceOptions);
   } catch (e) {
+    if (e.superseded) return;  // user changed filter again, newer request in flight
     console.warn('loadReferenceOptions failed:', e.message);
     state.referenceOptions = { areas: [], stores: [], series: [], tiers: [], genders: [] };
   }
@@ -2780,29 +2806,51 @@ function setupSkuTypeahead() {
 
   const closeSuggestions = () => { sugs.hidden = true; sugs.innerHTML = ''; skuSuggestionsActiveIdx = -1; };
 
-  const renderSuggestions = (items) => {
+  const renderSuggestions = (items, query = '') => {
     if (!items || !items.length) {
       sugs.innerHTML = `<div class="sku-suggestion" style="color:var(--fg-muted);">Tidak ada hasil.</div>`;
       sugs.hidden = false;
       return;
     }
+    // Highlight: matched query slice gets a yellow chip in the code badge, bold-blue
+    // in the name — visual pattern ported from stock-inventory-dashboard SKU Search so
+    // user can instantly see WHY a result matched their typing.
+    const q = String(query || '').toLowerCase();
+    const highlightName = (text) => {
+      if (!q) return escapeHtml(text);
+      const idx = String(text).toLowerCase().indexOf(q);
+      if (idx === -1) return escapeHtml(text);
+      return escapeHtml(text.substring(0, idx))
+        + '<strong style="color:#0284c7;">' + escapeHtml(text.substring(idx, idx + q.length)) + '</strong>'
+        + escapeHtml(text.substring(idx + q.length));
+    };
+    const highlightBadge = (text) => {
+      if (!q) return escapeHtml(text);
+      const idx = String(text).toLowerCase().indexOf(q);
+      if (idx === -1) return escapeHtml(text);
+      return escapeHtml(text.substring(0, idx))
+        + '<span style="background:#fbbf24;color:#1e293b;border-radius:3px;padding:0 2px;font-weight:800;">' + escapeHtml(text.substring(idx, idx + q.length).toUpperCase()) + '</span>'
+        + escapeHtml(text.substring(idx + q.length));
+    };
+    const maxSugg = items.length;
     sugs.innerHTML = items.map((r, i) => {
-      const kb = r.kode_besar || '';
-      const km = r.kode_mix || '';
-      // Fall back through multiple name fields so the user always sees SOMETHING meaningful,
-      // never just "-". Backend populates product_name from kodemix.nama_barang → iseller.produk,
-      // but for some channels (consig/wholesale) it can be empty.
+      const kb = (r.kode_besar || '').toUpperCase();
       const name = r.product_name || r.kode_mix || r.kode_kecil || '(tanpa nama)';
-      const kmixLine = km && km !== kb ? `<span class="sku-suggestion-kmix">· ${escapeHtml(km)}</span>` : '';
+      const sub = [r.series || '', r.tier ? 'T' + r.tier : ''].filter(Boolean).join(' · ');
+      const metaRight = `${escapeHtml(r.gender||'-')} · ${fmtNum(r.pairs||0)} pairs`;
       return `
       <div class="sku-suggestion" data-idx="${i}" data-kb="${escapeHtml(kb)}">
+        <div class="sku-suggestion-badge">${highlightBadge(kb)}</div>
         <div class="sku-suggestion-main">
-          <div><span class="sku-suggestion-code">${escapeHtml(kb)}</span>${kmixLine}</div>
-          <div class="sku-suggestion-name">${escapeHtml(name)}</div>
+          <div class="sku-suggestion-name">${highlightName(name)}</div>
+          <div class="sku-suggestion-sub">${escapeHtml(sub || '-')}</div>
         </div>
-        <div class="sku-suggestion-meta">${escapeHtml(r.gender||'-')} · ${fmtNum(r.pairs||0)} pairs</div>
+        <div class="sku-suggestion-meta">${metaRight}</div>
       </div>`;
     }).join('');
+    if (items.length >= 15) {
+      sugs.innerHTML += `<div class="sku-suggestion-footer">Ketik lebih spesifik untuk hasil lainnya...</div>`;
+    }
     sugs.hidden = false;
     sugs.querySelectorAll('.sku-suggestion').forEach(el => {
       el.onclick = () => {
@@ -2825,7 +2873,7 @@ function setupSkuTypeahead() {
     if (q.length < 3) { closeSuggestions(); return; }
     skuTypeaheadDebounce = setTimeout(async () => {
       const items = await fetchSkuSuggestions(q);
-      renderSuggestions(items);
+      renderSuggestions(items, q);
     }, 300);
   });
   input.addEventListener('keydown', (e) => {
@@ -2918,6 +2966,7 @@ async function refresh({ reloadData = true } = {}) {
     state.lastUpdate = new Date();
     document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
   } catch (e) {
+    if (e.superseded) { return; }  // newer fetch in flight, skip — no error banner
     console.error(e);
     showStatus(`❌ Gagal memuat: ${e.message}`, 'error');
     document.getElementById('globalError').style.display = '';

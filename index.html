@@ -867,7 +867,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.14 · build 2026-04-23 · tighter fuzzy match + area→toko cascade + hide area for Event</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.15 · build 2026-04-23 · target forced 2-col + hierarchical area cascade (Bali → Bali 1/2/3)</span>
   </footer>
 
 </div>
@@ -907,7 +907,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.14';
+const APP_VERSION = 'v1.15';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1179,12 +1179,21 @@ function applyReferenceOptions() {
 
 // Filter the Toko dropdown so it only lists stores in the currently-selected area(s).
 // No area selected → all stores. Prunes selections that are no longer visible.
+// Area matching is hierarchical: picking "Bali" includes "Bali 1", "Bali 2", "Bali 3"
+// (common Zuma pattern where a parent region splits into numbered sub-areas).
+function _areaMatches(storeArea, selectedArea) {
+  if (!storeArea || !selectedArea) return false;
+  const sa = String(storeArea).toLowerCase().trim();
+  const se = String(selectedArea).toLowerCase().trim();
+  return sa === se || sa.startsWith(se + ' ') || se.startsWith(sa + ' ');
+}
+
 function applyStoreAreaCascade() {
   if (!window._msx || !window._msx.store) return;
   const all = state._allStoreOptions || [];
   const selectedAreas = Array.isArray(state.area) ? state.area : [];
   const visible = selectedAreas.length
-    ? all.filter(s => !s.area || selectedAreas.includes(s.area))
+    ? all.filter(s => selectedAreas.some(a => _areaMatches(s.area, a)))
     : all;
   window._msx.store.setOptions(visible);
   // Prune any currently-selected stores that are no longer visible
@@ -2289,9 +2298,9 @@ async function renderTarget() {
         <div class="kpi-card"><div class="kpi-label">✅ On Track (≥100%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${onTrack}</span></span><div class="kpi-sub">toko</div></div>
         <div class="kpi-card"><div class="kpi-label">⚠️ Behind (&lt;80%)</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${behind}</span></span><div class="kpi-sub">⚡ ${atRisk} at risk</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:12px;">
-        ${trackedCard}
-        ${untrackedCard}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
+        <div style="min-width:0;">${trackedCard}</div>
+        <div style="min-width:0;">${untrackedCard}</div>
       </div>`;
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;

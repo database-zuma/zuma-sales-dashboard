@@ -801,8 +801,15 @@ table.data tfoot td {
 
   <!-- ========= TAB: TARGET ========= -->
   <section class="tab-content" id="tab-target">
+    <div class="subtab-bar" style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);">
+      <button class="subtab-btn active" data-subtab="current" style="padding:8px 14px;border:none;background:none;border-bottom:2px solid var(--accent);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">📊 Current Period</button>
+      <button class="subtab-btn" data-subtab="matrix" style="padding:8px 14px;border:none;background:none;border-bottom:2px solid transparent;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;">📅 Monthly Trend</button>
+    </div>
     <div id="targetContent">
       <div class="loading"><div class="spinner"></div>Memuat data target...</div>
+    </div>
+    <div id="targetMatrixContent" style="display:none;">
+      <div class="loading"><div class="spinner"></div>Memuat monthly matrix...</div>
     </div>
   </section>
 
@@ -859,7 +866,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.10 · build 2026-04-23 · target tab: channel filter + Qty column + Online aggregate</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.11 · build 2026-04-23 · Target Monthly Trend matrix + compact/expanded toggle + year range</span>
   </footer>
 
 </div>
@@ -899,7 +906,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.10';
+const APP_VERSION = 'v1.11';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2118,6 +2125,155 @@ async function renderTarget() {
   }
 }
 
+// ============ TARGET — MONTHLY TREND MATRIX ============
+// Wide per-store table with one column-block per month (Qty / Rev / Target / Ach%).
+// Filter-independent on date range: always shows the full selected year range.
+// Compact mode hides Qty/Rev/Target, shows only Ach% per month (24 cols for 2 years).
+const matrixState = { yearStart: 2025, yearEnd: 2026, compact: false };
+
+async function renderTargetMatrix() {
+  const wrap = document.getElementById('targetMatrixContent');
+
+  if (state.channel === 'global') {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Pilih channel spesifik untuk melihat monthly trend.</div>';
+    return;
+  }
+
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat monthly matrix...</div>';
+  try {
+    const { yearStart, yearEnd, compact } = matrixState;
+    const url = `/api/targets/achievement-matrix?channel=${encodeURIComponent(state.channel)}&year_start=${yearStart}&year_end=${yearEnd}`;
+    const data = await fetchAPI(url);
+    const stores = data.stores || [];
+    if (!stores.length) {
+      wrap.innerHTML = `<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Tidak ada data matrix untuk ${state.channel} ${yearStart}–${yearEnd}.</div>`;
+      return;
+    }
+
+    const MONTH_LABEL = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const years = [];
+    for (let y = yearStart; y <= yearEnd; y++) years.push(y);
+    const months = []; // [{year, month, key}]
+    years.forEach(y => { for (let m = 1; m <= 12; m++) months.push({ year: y, month: m, key: `${y}_${m}` }); });
+
+    const achColor = (pct, hasTarget) => {
+      if (!hasTarget) return { fg: '#94a3b8', bg: '' };
+      if (pct >= 100) return { fg: '#16a34a', bg: 'rgba(22,163,74,0.14)' };
+      if (pct >= 80)  return { fg: '#ca8a04', bg: 'rgba(245,158,11,0.14)' };
+      return { fg: '#dc2626', bg: 'rgba(220,38,38,0.12)' };
+    };
+
+    // Head
+    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Store';
+    const stickyHeadCss = 'position:sticky;top:0;background:#fff;z-index:3;';
+    const stickyFirstCss = 'position:sticky;left:0;background:#fff;z-index:2;';
+    const stickyCornerCss = 'position:sticky;left:0;top:0;background:#fff;z-index:4;';
+    const colSpan = compact ? 1 : 4;
+
+    const headRow1 = `
+      <tr>
+        <th class="center" style="${stickyCornerCss};width:36px;">#</th>
+        <th style="${stickyCornerCss};left:36px;min-width:220px;">${nameLabel}</th>
+        <th style="${stickyCornerCss};left:256px;min-width:90px;">Area</th>
+        ${months.map(m => `<th class="center" colspan="${colSpan}" style="${stickyHeadCss};">${MONTH_LABEL[m.month-1]} ${m.year}</th>`).join('')}
+      </tr>`;
+    const headRow2 = compact ? '' : `
+      <tr>
+        <th style="${stickyCornerCss};top:28px;"></th>
+        <th style="${stickyCornerCss};top:28px;left:36px;"></th>
+        <th style="${stickyCornerCss};top:28px;left:256px;"></th>
+        ${months.map(_ => `
+          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Qty</th>
+          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Rev</th>
+          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Tgt</th>
+          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Ach%</th>`).join('')}
+      </tr>`;
+
+    // Body
+    const rowsHtml = stores.map((s, i) => {
+      const cells = months.map(m => {
+        const v = s.months[m.key] || { qty: 0, revenue: 0, target: 0 };
+        const hasTarget = v.target > 0;
+        const pct = hasTarget ? (v.revenue / v.target * 100) : 0;
+        const { fg, bg } = achColor(pct, hasTarget);
+        if (compact) {
+          return `<td class="right" style="background:${bg};color:${fg};font-weight:600;font-size:11px;white-space:nowrap;">${hasTarget ? pct.toFixed(0)+'%' : '—'}</td>`;
+        }
+        return `
+          <td class="right" style="font-size:11px;white-space:nowrap;">${v.qty ? fmtNum(v.qty) : '—'}</td>
+          <td class="right" style="font-size:11px;white-space:nowrap;">${v.revenue ? fmtRpShort(v.revenue) : '—'}</td>
+          <td class="right muted" style="font-size:11px;white-space:nowrap;">${hasTarget ? fmtRpShort(v.target) : '—'}</td>
+          <td class="right" style="background:${bg};color:${fg};font-weight:700;font-size:11px;white-space:nowrap;">${hasTarget ? pct.toFixed(0)+'%' : '—'}</td>`;
+      }).join('');
+      return `
+        <tr>
+          <td class="center muted" style="${stickyFirstCss};">${i+1}</td>
+          <td class="strong" style="${stickyFirstCss};left:36px;">${escapeHtml(s.name || '-')}</td>
+          <td class="muted" style="${stickyFirstCss};left:256px;">${escapeHtml(s.area || '-')}</td>
+          ${cells}
+        </tr>`;
+    }).join('');
+
+    const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;
+
+    wrap.innerHTML = `
+      <div class="card">
+        <div class="card-header" style="flex-wrap:wrap;gap:8px;">
+          <div class="card-title">Store Achievement · ${chLabel} · ${yearStart}–${yearEnd} · ${stores.length} entity</div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <label style="font-size:11px;color:#64748b;">Year range:</label>
+            <select id="mxYearStart" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;">
+              ${[2024,2025,2026].map(y => `<option value="${y}" ${y===yearStart?'selected':''}>${y}</option>`).join('')}
+            </select>
+            <span style="color:#94a3b8;">—</span>
+            <select id="mxYearEnd" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;">
+              ${[2024,2025,2026].map(y => `<option value="${y}" ${y===yearEnd?'selected':''}>${y}</option>`).join('')}
+            </select>
+            <button id="mxToggle" class="btn-ghost" style="margin-left:8px;">${compact ? '📊 Expanded' : '📎 Compact'}</button>
+            <button id="mxCsv" class="btn-ghost">CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap" style="max-height:70vh;overflow:auto;">
+          <table class="data" style="font-size:11px;">
+            <thead>${headRow1}${headRow2}</thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div style="padding:8px 12px;font-size:10px;color:#94a3b8;">
+          Filter-independent on date range · Ach% = Revenue / Target · Heatmap: 🟢 ≥100 · 🟡 80–99 · 🔴 &lt;80 · — = no target
+        </div>
+      </div>`;
+
+    document.getElementById('mxYearStart').onchange = e => { matrixState.yearStart = +e.target.value; if (matrixState.yearEnd < matrixState.yearStart) matrixState.yearEnd = matrixState.yearStart; renderTargetMatrix(); };
+    document.getElementById('mxYearEnd').onchange   = e => { matrixState.yearEnd = +e.target.value; if (matrixState.yearStart > matrixState.yearEnd) matrixState.yearStart = matrixState.yearEnd; renderTargetMatrix(); };
+    document.getElementById('mxToggle').onclick     = () => { matrixState.compact = !matrixState.compact; renderTargetMatrix(); };
+    document.getElementById('mxCsv').onclick = () => {
+      const header = ['#','Store','Area'];
+      months.forEach(m => {
+        const label = `${MONTH_LABEL[m.month-1]}_${m.year}`;
+        if (compact) header.push(`${label}_Ach%`);
+        else header.push(`${label}_Qty`, `${label}_Rev`, `${label}_Tgt`, `${label}_Ach%`);
+      });
+      const lines = [header.join(',')];
+      stores.forEach((s, i) => {
+        const row = [i+1, `"${s.name||''}"`, `"${s.area||''}"`];
+        months.forEach(m => {
+          const v = s.months[m.key] || { qty:0, revenue:0, target:0 };
+          const pct = v.target ? (v.revenue/v.target*100).toFixed(1) : '';
+          if (compact) row.push(pct);
+          else row.push(v.qty||0, v.revenue||0, v.target||0, pct);
+        });
+        lines.push(row.join(','));
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `matrix-${state.channel}-${yearStart}-${yearEnd}.csv` });
+      a.click();
+    };
+  } catch (e) {
+    wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat matrix: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
 // ============ REFUND (lazy fetch) ============
 async function renderRefund() {
   const wrap = document.getElementById('refundContent');
@@ -2529,12 +2685,18 @@ function renderActiveTab(data) {
     else if (tab === 'hourly') renderHourly(data);
     else if (tab === 'spg') renderSpg(data);
     else if (tab === 'promo') renderPromo(data);
-    else if (tab === 'target') renderTarget();   // lazy fetch
+    else if (tab === 'target') {
+      if (state.targetSubtab === 'matrix') renderTargetMatrix();
+      else renderTarget();
+    }
     else if (tab === 'refund') renderRefund();   // lazy fetch
   } catch (e) { console.error('renderActiveTab', tab, e); }
 }
 
 // ============ EVENTS ============
+// Active sub-tab within Target tab: 'current' (date-scoped) or 'matrix' (monthly trend)
+state.targetSubtab = 'current';
+
 function setupEvents() {
   // Tabs
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2545,6 +2707,34 @@ function setupEvents() {
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
       // Render the tab content using already-loaded payload (no refetch)
       if (state.rawData) renderActiveTab(state.rawData);
+    };
+  });
+
+  // Sub-tabs (Target tab only)
+  document.querySelectorAll('.subtab-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.subtab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.borderBottomColor = 'transparent';
+        b.style.color = '#64748b';
+        b.style.fontWeight = '500';
+      });
+      btn.classList.add('active');
+      btn.style.borderBottomColor = 'var(--accent)';
+      btn.style.color = 'var(--text)';
+      btn.style.fontWeight = '600';
+      state.targetSubtab = btn.dataset.subtab;
+      const current = document.getElementById('targetContent');
+      const matrix = document.getElementById('targetMatrixContent');
+      if (state.targetSubtab === 'matrix') {
+        current.style.display = 'none';
+        matrix.style.display = '';
+        renderTargetMatrix();
+      } else {
+        current.style.display = '';
+        matrix.style.display = 'none';
+        if (state.rawData) renderTarget();
+      }
     };
   });
 

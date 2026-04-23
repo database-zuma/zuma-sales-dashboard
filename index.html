@@ -879,7 +879,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.30 · build 2026-04-23 · Campaign empty-state arahkan ke Retail/Event channel</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.31 · build 2026-04-23 · Campaign % Share = campaign / total omzet scope (bukan / pool real-promo)</span>
   </footer>
 
 </div>
@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.30';
+const APP_VERSION = 'v1.31';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2035,7 +2035,7 @@ function renderPromo(data) {
       <th class="right">Revenue</th>
       <th class="right">Diskon Rp</th>
       <th class="right">% Diskon</th>
-      <th style="width:180px;">% Share Revenue</th>` : `
+      <th style="width:180px;" title="Campaign revenue ÷ total revenue (scope filter saat ini)">% dari Omzet</th>` : `
       <th class="center" style="width:30px;">#</th>
       ${extraCols.map(c => `<th>${c}</th>`).join('')}
       <th class="right">Revenue</th>
@@ -2056,6 +2056,9 @@ function renderPromo(data) {
     }
 
     const warnColor = (pct) => pct > 25 ? 'color:#dc2626;font-weight:600;' : pct > 10 ? 'color:#f59e0b;' : '';
+    // % Share Revenue uses TOTAL revenue (of current filter/outlet scope) as denominator,
+    // not just the real-promo pool — answers "RK40 di outlet X = brp % dari omzet outlet X?".
+    const outletTotalRev = Number((data.promoSummary || {}).totalRevenue) || 0;
     const totalCampRev = isCampaign ? items.reduce((a,c) => a + (Number(c.revenue)||0), 0) : 0;
 
     const rowsHtml = items.slice(0, 100).map((r,i) => {
@@ -2066,7 +2069,10 @@ function renderPromo(data) {
       const rowsTotalCnt = Number(r.rows_total) || 0;
       if (isCampaign) {
         const qty = Number(r.pairs) || 0;
-        const share = totalCampRev > 0 ? (revenue / totalCampRev * 100) : 0;
+        // Share vs total revenue of current scope (outlet filter respected): "% of omzet
+        // yang lewat campaign ini". Fall back to real-promo pool if totalRev unavailable.
+        const denom = outletTotalRev > 0 ? outletTotalRev : totalCampRev;
+        const share = denom > 0 ? (revenue / denom * 100) : 0;
         return `<tr>
           <td class="center muted">${i+1}</td>
           <td class="strong">${escapeHtml(String(r.name || '-'))}</td>

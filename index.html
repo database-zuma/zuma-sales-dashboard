@@ -524,6 +524,7 @@ table.data tfoot td {
         <option value="online">🌐 Online</option>
         <option value="consig">📦 Consignment</option>
         <option value="wholesale">🏭 Wholesale</option>
+        <option value="event">🎪 Event</option>
       </select>
     </div>
     <div class="filter-group flex">
@@ -866,7 +867,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.12 · build 2026-04-23 · Target: skip area rollups + split tracked/untracked + sort by achievement asc</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.13 · build 2026-04-23 · Mataram 2 merge + Event channel + fuzzy target match</span>
   </footer>
 
 </div>
@@ -906,7 +907,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.12';
+const APP_VERSION = 'v1.13';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1749,10 +1750,11 @@ function renderTrend(data) {
 // ============ RENDER HOURLY ============
 let chartHourlyInstance = null;
 function renderHourly(data) {
-  // Hourly breakdown only makes sense for Retail POS data (non-retail channels dump into hour 0).
+  // Hourly breakdown only makes sense for POS channels (retail + event). Non-POS channels
+  // dump into hour 0.
   const wrap = document.getElementById('hourlyRetailContent');
   const empty = document.getElementById('hourlyEmpty');
-  if (state.channel !== 'retail') {
+  if (state.channel !== 'retail' && state.channel !== 'event') {
     if (chartHourlyInstance) { chartHourlyInstance.destroy(); chartHourlyInstance = null; }
     if (wrap) wrap.style.display = 'none';
     if (empty) empty.style.display = '';
@@ -1819,10 +1821,10 @@ function renderHourly(data) {
 
 // ============ RENDER SPG ============
 function renderSpg(data) {
-  // SPG leaderboard is retail-only (non-retail channels have no SPG attribution).
+  // SPG leaderboard works for POS channels (retail + event) which have SPG attribution.
   const wrap = document.getElementById('spgRetailContent');
   const empty = document.getElementById('spgEmpty');
-  if (state.channel !== 'retail') {
+  if (state.channel !== 'retail' && state.channel !== 'event') {
     if (wrap) wrap.style.display = 'none';
     if (empty) empty.style.display = '';
     return;
@@ -2002,6 +2004,65 @@ const TARGET_AREA_ROLLUPS = new Set([
   'padang sidempuan','samarinda','tarakan','surabaya','gorontalo',
 ]);
 
+// Stopwords removed before token-set matching (generic mall/shop nouns).
+const _TARGET_STOPWORDS = new Set(['mall','store','outlet','the','shop','shopping','center','plaza']);
+
+function _targetTokens(s) {
+  const out = new Set();
+  for (const raw of String(s || '').toLowerCase().trim().split(/\s+/)) {
+    if (!raw || _TARGET_STOPWORDS.has(raw)) continue;
+    // Simple plural stemming — strip trailing 's' on tokens >=4 chars ("hills" -> "hill").
+    const stem = raw.length >= 4 && raw.endsWith('s') ? raw.slice(0, -1) : raw;
+    out.add(stem);
+  }
+  return out;
+}
+
+// SequenceMatcher-style similarity via longest common substring approximation.
+// Uses the standard difflib ratio = 2*M / (len(a) + len(b)) where M is matching chars.
+function _similarityRatio(a, b) {
+  const sa = String(a || '').toLowerCase();
+  const sb = String(b || '').toLowerCase();
+  if (!sa || !sb) return 0;
+  if (sa === sb) return 1;
+  // Dynamic programming LCS length
+  const m = sa.length, n = sb.length;
+  const prev = new Array(n + 1).fill(0);
+  let lcs = 0;
+  for (let i = 0; i < m; i++) {
+    let prevDiag = 0;
+    for (let j = 0; j < n; j++) {
+      const cur = prev[j + 1];
+      if (sa[i] === sb[j]) {
+        prev[j + 1] = prevDiag + 1;
+        if (prev[j + 1] > lcs) lcs = prev[j + 1];
+      } else {
+        prev[j + 1] = Math.max(prev[j + 1], prev[j]);
+      }
+      prevDiag = cur;
+    }
+  }
+  return (2 * lcs) / (m + n);
+}
+
+// Mirror of backend _fuzzy_match — same tolerance rules so both views agree.
+function targetFuzzyMatch(a, b) {
+  const na = String(a || '').toLowerCase().trim();
+  const nb = String(b || '').toLowerCase().trim();
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const ta = _targetTokens(a);
+  const tb = _targetTokens(b);
+  if (ta.size && tb.size) {
+    let inter = 0;
+    for (const t of ta) if (tb.has(t)) inter++;
+    const smaller = Math.min(ta.size, tb.size);
+    if (smaller && inter / smaller >= 0.75 && inter >= 2) return true;
+  }
+  return _similarityRatio(na, nb) >= 0.85;
+}
+
 async function renderTarget() {
   const wrap = document.getElementById('targetContent');
 
@@ -2034,11 +2095,6 @@ async function renderTarget() {
 
     const byEntity = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
 
-    const matches = (a, b) => {
-      const x = normalize(a), y = normalize(b);
-      return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
-    };
-
     let tracked = [];
     let untracked = [];
 
@@ -2058,32 +2114,46 @@ async function renderTarget() {
         pct: target ? (actualRev / target * 100) : 0,
       }];
     } else {
+      // Aggregate byEntity rows by entity name first (some channels return rows split by
+      // area — e.g. a toko that sold in 2 areas comes back as 2 rows; target match should
+      // see the combined totals).
+      const entityAgg = new Map();
+      byEntity.forEach(e => {
+        const key = normalize(e.name);
+        if (!key) return;
+        const cur = entityAgg.get(key) || { name: e.name, area: e.area || '-', revenue: 0, pairs: 0 };
+        cur.revenue += Number(e.revenue) || 0;
+        cur.pairs += Number(e.pairs) || 0;
+        entityAgg.set(key, cur);
+      });
+      const entities = Array.from(entityAgg.values());
+
       const matchedEntityKeys = new Set();
       tracked = targets.map(t => {
         const sheetName = t.store || t.toko || '-';
         const target = activeMonths.reduce((s, m) => s + (Number(t[m]) || 0), 0);
         if (target <= 0) return null;
-        const match = byEntity.find(e => matches(e.name, sheetName));
+        const match = entities.find(e => targetFuzzyMatch(e.name, sheetName));
         if (!match) return null;
         matchedEntityKeys.add(normalize(match.name));
-        const actualRev = Number(match.revenue) || 0;
-        const actualQty = Number(match.pairs) || 0;
         return {
-          storeName: match.name,  // prefer entity's own name over sheet name
+          storeName: match.name,
           area: match.area || t.area || '-',
-          target, actualRev, actualQty,
-          pct: target ? (actualRev / target * 100) : 0,
+          target,
+          actualRev: match.revenue,
+          actualQty: match.pairs,
+          pct: target ? (match.revenue / target * 100) : 0,
         };
       }).filter(Boolean);
 
-      untracked = byEntity
+      untracked = entities
         .filter(e => !matchedEntityKeys.has(normalize(e.name)))
         .map(e => ({
           storeName: e.name,
           area: e.area || '-',
           target: 0,
-          actualRev: Number(e.revenue) || 0,
-          actualQty: Number(e.pairs) || 0,
+          actualRev: e.revenue,
+          actualQty: e.pairs,
           pct: 0,
         }))
         .filter(e => e.actualRev > 0 || e.actualQty > 0);

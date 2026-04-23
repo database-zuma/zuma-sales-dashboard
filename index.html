@@ -878,7 +878,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.22 · build 2026-04-23 · SKU typeahead styled like inventory dashboard + request cancellation for fast filter switching</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.23 · build 2026-04-23 · product_name fallback via kode_mix lookup + skip "name=SKU" garbage</span>
   </footer>
 
 </div>
@@ -918,7 +918,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.22';
+const APP_VERSION = 'v1.23';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2835,7 +2835,13 @@ function setupSkuTypeahead() {
     const maxSugg = items.length;
     sugs.innerHTML = items.map((r, i) => {
       const kb = (r.kode_besar || '').toUpperCase();
-      const name = r.product_name || r.kode_mix || r.kode_kecil || '(tanpa nama)';
+      // If product_name is actually just the SKU code copied (upstream data quality issue),
+      // fall back to kode_mix / kode_kecil so the user sees something different from the badge.
+      const rawName = (r.product_name || '').trim();
+      const looksLikeCode = rawName.toUpperCase() === kb
+        || rawName.toUpperCase() === (r.kode_kecil || '').toUpperCase()
+        || rawName.toUpperCase() === (r.kode_mix || '').toUpperCase();
+      const name = (rawName && !looksLikeCode) ? rawName : (r.kode_mix || r.kode_kecil || '(tanpa nama)');
       const sub = [r.series || '', r.tier ? 'T' + r.tier : ''].filter(Boolean).join(' · ');
       const metaRight = `${escapeHtml(r.gender||'-')} · ${fmtNum(r.pairs||0)} pairs`;
       return `

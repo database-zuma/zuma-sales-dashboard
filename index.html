@@ -582,7 +582,7 @@ table.data tfoot td {
       <div class="kpi-card kpi-primary"><div class="kpi-label">Omzet</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiOmzet">—</span></span><div class="kpi-sub" id="kpiOmzetSub">&nbsp;</div></div>
       <div class="kpi-card"><div class="kpi-label">Pairs</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiPairs">—</span></span><div class="kpi-sub" id="kpiPairsSub">&nbsp;</div></div>
       <div class="kpi-card"><div class="kpi-label">Transaksi</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiTrx">—</span></span><div class="kpi-sub" id="kpiTrxSub">&nbsp;</div></div>
-      <div class="kpi-card" title="Unit per Transaction = Pairs / Transactions"><div class="kpi-label">UPT</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiUpt">—</span></span><div class="kpi-sub">unit / txn</div></div>
+      <div class="kpi-card" title="Avg Transaction Units = Pairs / Transactions"><div class="kpi-label">ATU</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiUpt">—</span></span><div class="kpi-sub">unit / txn</div></div>
       <div class="kpi-card" title="Avg Selling Price = Revenue / Pairs"><div class="kpi-label">ASP</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiAsp">—</span></span><div class="kpi-sub">Rp / pair</div></div>
       <div class="kpi-card" title="Avg Transaction Value = Revenue / Transactions"><div class="kpi-label">ATV</div><span class="kpi-value-wrap"><span class="kpi-value" id="kpiAtv">—</span></span><div class="kpi-sub">Rp / txn</div></div>
     </div>
@@ -774,7 +774,7 @@ table.data tfoot td {
             <th class="right">Pairs</th>
             <th class="right">Revenue</th>
             <th class="right">Txn</th>
-            <th class="right">UPT</th>
+            <th class="right">ATU</th>
             <th class="right">ASP</th>
             <th class="right">ATV</th>
           </tr></thead>
@@ -845,7 +845,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.5 · build 2026-04-23 · entity area split in outlet + title-case consig</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.6 · build 2026-04-23 · UPT→ATU + online txn via nomor_invoice</span>
   </footer>
 
 </div>
@@ -882,7 +882,7 @@ const cache = {};
 
 // ============ LOCALSTORAGE CACHE (10min TTL) ============
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const CACHE_PREFIX = 'zuma-sales-v2:';
+const CACHE_PREFIX = 'zuma-sales-v3:';
 function lsGet(key) {
   try {
     const raw = localStorage.getItem(CACHE_PREFIX + key);
@@ -1328,7 +1328,7 @@ function renderPerformanceTable(data) {
     <th class="right">Qty</th>
     <th class="right">Revenue</th>
     <th class="right">Txn</th>
-    <th class="right">UPT</th>
+    <th class="right">ATU</th>
     <th class="right">ASP</th>
     <th class="right">ATV</th>`;
   document.getElementById('performanceHead').innerHTML = head;
@@ -1428,7 +1428,7 @@ function renderOutlet(data) {
     <th class="right">Pairs</th>
     <th class="right">Revenue</th>
     <th class="right">Txn</th>
-    <th class="right">UPT</th>
+    <th class="right">ATU</th>
     <th class="right">ASP</th>
     <th class="right">ATV</th>`;
   document.getElementById('outletHead').innerHTML = head;

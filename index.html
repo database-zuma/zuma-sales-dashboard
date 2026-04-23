@@ -867,7 +867,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.19 · build 2026-04-23 · server-side area→toko cascade (backend filters directly)</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.20 · build 2026-04-23 · parallel filter-options + data fetch, session cache for repeat area clicks</span>
   </footer>
 
 </div>
@@ -907,7 +907,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.19';
+const APP_VERSION = 'v1.20';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1137,19 +1137,29 @@ function aggregate(rows) {
 // ============ REFERENCE OPTIONS (for filter dropdowns) ============
 // Load once per channel/date/skuOnly. Independent from currently-filtered payload
 // so dropdowns keep their full option list even after a filter is applied.
+// Per-session memory cache for filter-options (keyed by channel+date+area+skuOnly).
+// Cuts repeat-area clicks from ~2s roundtrip to instant.
+const _refCache = new Map();
+
 async function loadReferenceOptions() {
   const sandalOnly = !state.skuOnly;
   const qs = new URLSearchParams({
     channel: state.channel, from: state.from, to: state.to,
     sku_only: String(sandalOnly),
   });
-  // Area filter is passed through so the backend narrows the Toko list server-side.
-  // This is the reliable cascade path — no client-side area-to-store matching needed.
-  for (const a of (state.area || [])) qs.append('area', a);
+  const sortedAreas = [...(state.area || [])].sort();
+  for (const a of sortedAreas) qs.append('area', a);
   const url = '/api/sales/filter-options?' + qs.toString();
+  const cacheKey = url;
+  if (_refCache.has(cacheKey)) {
+    state.referenceOptions = _refCache.get(cacheKey);
+    applyReferenceOptions();
+    return;
+  }
   try {
     const data = await fetchAPI(url);
     state.referenceOptions = data || {};
+    _refCache.set(cacheKey, state.referenceOptions);
   } catch (e) {
     console.warn('loadReferenceOptions failed:', e.message);
     state.referenceOptions = { areas: [], stores: [], series: [], tiers: [], genders: [] };
@@ -3012,10 +3022,12 @@ function setupEvents() {
     const inst = new MultiSelect(host, {
       placeholder,
       searchable,
-      onChange: async (vals) => {
+      // Fire the side-effect (e.g. reload area-filtered options) and the data refresh
+      // in parallel so the UI doesn't wait for two sequential roundtrips.
+      onChange: (vals) => {
         state[stateKey] = vals;
         state.page = 1;
-        if (onSelect) await onSelect(vals);
+        if (onSelect) onSelect(vals);
         refresh({ reloadData: true });
       }
     });

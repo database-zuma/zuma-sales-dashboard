@@ -879,7 +879,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.27 · build 2026-04-23 · Promo tab: Campaign Breakdown (nama promo dari iSeller) with % share bar</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.28 · build 2026-04-23 · Campaign Breakdown: pakai jumlah_diskon_per_item + fallback ke kode_diskon/catatan (RK40 dst sekarang visible)</span>
   </footer>
 
 </div>
@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.27';
+const APP_VERSION = 'v1.28';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

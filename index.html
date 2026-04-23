@@ -867,7 +867,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.16 · build 2026-04-23 · cascade safety net — never empty, fallback to all on miss</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.17 · build 2026-04-23 · cascade debug logging (see console for [cascade] + [ref])</span>
   </footer>
 
 </div>
@@ -907,7 +907,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.16';
+const APP_VERSION = 'v1.17';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1163,6 +1163,7 @@ function applyReferenceOptions() {
     ? { value: s, label: s, area: null }
     : { value: s.name, label: s.name, area: s.area || null });
   state._allStoreOptions = storeOpts;
+  console.log('[ref] loaded', storeOpts.length, 'stores · sample:', storeOpts.slice(0,3), '· areas:', r.areas);
   if (window._msx) {
     window._msx.area   && window._msx.area.setOptions(r.areas   || []);
     window._msx.gender && window._msx.gender.setOptions(r.genders || []);
@@ -1189,14 +1190,22 @@ function _areaMatches(storeArea, selectedArea) {
 }
 
 function applyStoreAreaCascade() {
-  if (!window._msx || !window._msx.store) return;
+  if (!window._msx || !window._msx.store) {
+    console.log('[cascade] skipped — msx.store not ready');
+    return;
+  }
   const all = state._allStoreOptions || [];
-  // If the reference list hasn't loaded yet, don't blank the dropdown.
-  if (!all.length) return;
+  if (!all.length) {
+    console.log('[cascade] skipped — _allStoreOptions empty (ref not loaded yet)');
+    return;
+  }
   const selectedAreas = Array.isArray(state.area) ? state.area : [];
+  const unique_areas = Array.from(new Set(all.map(s => s.area)));
+  console.log('[cascade] selectedAreas=', selectedAreas, ' unique store-areas=', unique_areas, ' total stores=', all.length);
   let visible = selectedAreas.length
     ? all.filter(s => selectedAreas.some(a => _areaMatches(s.area, a)))
     : all;
+  console.log('[cascade] after filter: visible=', visible.length);
   // Safety net: if hierarchical area match returned 0 stores (e.g. user selected an
   // area label that doesn't appear in any store's area field), fall back to full list
   // so the dropdown is never empty by accident.

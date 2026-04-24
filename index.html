@@ -2670,13 +2670,9 @@ async function renderRefund() {
     </tr>`).join('') || `<tr><td colspan="${secondary ? 4 : 3}" class="muted" style="padding:24px;text-align:center;">Tidak ada refund untuk periode ini.</td></tr>`;
 
     wrap.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
+      <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);">
         <div class="kpi-card kpi-primary"><div class="kpi-label">Refund Value</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(summary.refund_value || 0)}</span></span><div class="kpi-sub">${fmtRp(summary.refund_value || 0)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Refund Qty</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.refund_qty || 0)}</span></span><div class="kpi-sub">pairs</div></div>
-        <div class="kpi-card"><div class="kpi-label">% dari Omzet</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${refundRate>2?'#dc2626':refundRate>1?'#f59e0b':'#16a34a'};">${refundRate.toFixed(2)}%</span></span><div class="kpi-sub">retail revenue</div></div>
-        <div class="kpi-card"><div class="kpi-label">Toko Kena Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(byStore.length)}</span></span><div class="kpi-sub">dengan refund</div></div>
-        <div class="kpi-card"><div class="kpi-label">SPG Kena Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(bySpg.length)}</span></span><div class="kpi-sub">orang</div></div>
-        <div class="kpi-card"><div class="kpi-label">Artikel Refund</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(byArticle.length)}</span></span><div class="kpi-sub">SKU unik</div></div>
       </div>
 
       <div class="grid-2">

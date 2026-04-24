@@ -879,7 +879,7 @@ table.data tfoot td {
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
-    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.31 · build 2026-04-23 · Campaign % Share = campaign / total omzet scope (bukan / pool real-promo)</span>
+    Zuma Indonesia · Sales Analytics · <span id="buildStamp">v1.32 · build 2026-04-23 · Refund tab retail-only (konsisten sama Hourly/SPG)</span>
   </footer>
 
 </div>
@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.31';
+const APP_VERSION = 'v1.32';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2617,6 +2617,13 @@ async function renderTargetMatrix() {
 // ============ REFUND (lazy fetch) ============
 async function renderRefund() {
   const wrap = document.getElementById('refundContent');
+  // Refund source = core.iseller only (retail POS has well-formed refund flags). Other
+  // channels don't have reliable refund data, so show empty state consistent with how
+  // Hourly/SPG gate on channel.
+  if (state.channel !== 'retail') {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Data refund hanya tersedia untuk channel <strong>Retail</strong>.</div>';
+    return;
+  }
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat refund...</div>';
   try {
     const year = (state.from || '').slice(0,4) || String(new Date().getFullYear());

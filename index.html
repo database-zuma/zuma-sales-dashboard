@@ -2235,7 +2235,7 @@ async function renderGrowth() {
       const up = pct >= 0;
       const color = up ? '#16a34a' : '#dc2626';
       const arrow = up ? '▲' : '▼';
-      return `<span style="color:${color};font-weight:700;">${up?'+':''}${pct.toFixed(1)}% ${arrow}</span>`;
+      return `<span style="color:${color};font-weight:700;">${pct.toFixed(1)}% ${arrow}</span>`;
     };
 
     const curRev = Number(curKpi.revenue) || 0;

@@ -1290,8 +1290,10 @@ function escapeHtml(s) {
 function titleCaseEntity(s) {
   if (!s) return '';
   const str = String(s).trim();
-  if (!/[a-z]/.test(str) || /[A-Z]/.test(str[0] || '')) return str;
-  return str.replace(/\b([a-z])([a-z']*)/g, (_, a, b) => a.toUpperCase() + b);
+  // Skip if seluruhnya UPPERCASE (mungkin acronym seperti "DPP", "BCA")
+  if (!/[a-z]/.test(str)) return str;
+  // Lowercase dulu baru title-case tiap word, biar "Bintang supermarket" → "Bintang Supermarket"
+  return str.toLowerCase().replace(/\b(\w)(\w*)/g, (_, a, b) => a.toUpperCase() + b);
 }
 
 // ============ RENDER EXECUTIVE ============
@@ -2374,7 +2376,7 @@ async function renderTarget() {
       const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
       return `<tr style="background:${bg};">
         <td class="center muted">${i+1}</td>
-        <td class="strong">${escapeHtml(String(r.storeName))}</td>
+        <td class="strong">${escapeHtml(titleCaseEntity(String(r.storeName)))}</td>
         <td class="muted">${escapeHtml(String(r.area))}</td>
         <td class="right">${r.target ? fmtRpShort(r.target) : '—'}</td>
         <td class="right strong">${fmtRpShort(r.actualRev)}</td>
@@ -2389,7 +2391,7 @@ async function renderTarget() {
     const untrackedRows = untracked.map((r, i) => `
       <tr>
         <td class="center muted">${i+1}</td>
-        <td class="strong">${escapeHtml(String(r.storeName))}</td>
+        <td class="strong">${escapeHtml(titleCaseEntity(String(r.storeName)))}</td>
         <td class="muted">${escapeHtml(String(r.area))}</td>
         <td class="right strong">${fmtRpShort(r.actualRev)}</td>
         <td class="right">${fmtNum(r.actualQty)}</td>
@@ -2523,6 +2525,8 @@ async function renderTargetMatrix() {
       const k = normalize(s.name);
       const specific = entityAreaMap.get(k);
       if (specific) s.area = specific;
+      // Title-case nama (terutama untuk consignment: "bintang supermarket" → "Bintang Supermarket")
+      if (s.name) s.name = titleCaseEntity(s.name);
     });
 
     const MONTH_LABEL = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

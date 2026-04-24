@@ -3394,17 +3394,33 @@ function renderActiveTab(data) {
 // Active sub-tab within Target tab: 'current' (date-scoped) or 'matrix' (monthly trend)
 state.targetSubtab = 'current';
 
+function activateTab(tabName) {
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  const content = document.getElementById('tab-' + tabName);
+  if (!btn || !content) return false;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  content.classList.add('active');
+  if (state.rawData) renderActiveTab(state.rawData);
+  return true;
+}
+
 function setupEvents() {
-  // Tabs
+  // Tabs — click updates hash; hashchange handler switches tab (single source of truth)
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.onclick = () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-      // Render the tab content using already-loaded payload (no refetch)
-      if (state.rawData) renderActiveTab(state.rawData);
+      const target = btn.dataset.tab;
+      if (location.hash.replace('#','') !== target) {
+        location.hash = target;
+      } else {
+        activateTab(target);
+      }
     };
+  });
+  window.addEventListener('hashchange', () => {
+    const h = (location.hash || '').replace('#', '');
+    if (h) activateTab(h);
   });
 
   // Sub-tabs (Target tab only)
@@ -3585,6 +3601,9 @@ function init() {
   document.getElementById('fPeriodeAkhir').min = state.from;
 
   setupEvents();
+  // Deep-link via hash: e.g. #growth, #refund. Fallback ke 'executive' kalau kosong/invalid.
+  const initialHash = (location.hash || '').replace('#', '');
+  if (initialHash) activateTab(initialHash);
   // Load reference options (for dropdowns) + initial data in parallel
   loadReferenceOptions();
   refresh({ reloadData: true });

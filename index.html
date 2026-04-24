@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.32';
+const APP_VERSION = 'v1.35';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2245,7 +2245,8 @@ async function renderTarget() {
 
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target...</div>';
   try {
-    const data = await fetchAPI('/api/targets');
+    const sandalOnly = !state.skuOnly;
+    const data = await fetchAPI(`/api/targets?sku_only=${sandalOnly}`);
     const rawTargets = Array.isArray(data)
       ? data
       : Object.values(data || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
@@ -2459,7 +2460,8 @@ async function renderTargetMatrix() {
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat monthly matrix...</div>';
   try {
     const { yearStart, yearEnd, compact } = matrixState;
-    const url = `/api/targets/achievement-matrix?channel=${encodeURIComponent(state.channel)}&year_start=${yearStart}&year_end=${yearEnd}`;
+    const sandalOnly = !state.skuOnly;
+    const url = `/api/targets/achievement-matrix?channel=${encodeURIComponent(state.channel)}&year_start=${yearStart}&year_end=${yearEnd}&sku_only=${sandalOnly}`;
     const data = await fetchAPI(url);
     const stores = data.stores || [];
     if (!stores.length) {
@@ -2627,18 +2629,29 @@ async function renderRefund() {
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat refund...</div>';
   try {
     const year = (state.from || '').slice(0,4) || String(new Date().getFullYear());
-    const data = await fetchAPI(`/api/sales/refunds?year=${year}&channel=retail`);
+    const sandalOnly = !state.skuOnly;
+    const data = await fetchAPI(`/api/sales/refunds?year=${year}&channel=retail&sku_only=${sandalOnly}`);
     // Actual shape: {summary:{refund_qty, refund_value},
     //                by_store:[{toko, area, refund_qty, refund_value}],
     //                by_spg:[{spg, toko, refund_qty, refund_value}],
     //                by_area:[{area, refund_qty, refund_value}],
     //                by_article:[{article, refund_qty, refund_value}],
     //                detail:[...]}
+    // VPS backend tidak honor sku_only untuk endpoint ini — client-side blacklist
+    // pattern untuk non-SKU items (bags, hanger, packaging, dll).
+    const NON_SKU_RX = /(shop\s*bag|shopping\s*bag|paper\s*bag|paperbag|shopbag|hanger|inbox|kotak\s*sepatu|dus\s*sepatu|packaging|kaos\s*kaki|accessor(y|ies)|ongkir|ongkos|delivery)/i;
+    let byArticleRaw = data.by_article || [];
+    if (sandalOnly) {
+      byArticleRaw = byArticleRaw.filter(r => {
+        const txt = `${r.article || ''} ${r.series || ''} ${r.gender || ''}`;
+        return !NON_SKU_RX.test(txt);
+      });
+    }
     const summary = data.summary || {};
     const byStore = (data.by_store || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
     const bySpg   = (data.by_spg   || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
     const byArea  = (data.by_area  || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
-    const byArticle = (data.by_article || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const byArticle = byArticleRaw.slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
 
     const totRev = state.rawData && state.rawData.kpis ? (state.rawData.kpis.revenue || 0) : 0;
     const refundRate = totRev ? (summary.refund_value / totRev * 100) : 0;

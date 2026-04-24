@@ -403,8 +403,6 @@ table.data th {
   padding: 8px 10px;
   text-align: left;
   white-space: nowrap;
-  position: sticky; top: 0; z-index: 2;
-  background: var(--navy);
 }
 table.data thead tr th:first-child { border-top-left-radius: 3px; }
 table.data thead tr th:last-child { border-top-right-radius: 3px; }
@@ -921,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.37';
+const APP_VERSION = 'v1.36';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

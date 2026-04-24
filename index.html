@@ -2233,10 +2233,20 @@ async function renderGrowth() {
       loadChannel('wholesale', state.from, state.to, { group: 'growth-ws-cur' }).catch(() => ({ byEntity: [] })),
       loadChannel('wholesale', prevFrom, prevTo, { group: 'growth-ws-prev' }).catch(() => ({ byEntity: [] })),
     ]);
-    const wholesaleNames = new Set([
-      ...((wholesaleCur.byEntity || []).map(e => String(e.name || '').toLowerCase().trim())),
-      ...((wholesalePrev.byEntity || []).map(e => String(e.name || '').toLowerCase().trim())),
-    ].filter(Boolean));
+    // Bangun map nama → wholesale revenue (accumulated cur + prev).
+    const wholesaleRev = new Map();
+    [...(wholesaleCur.byEntity || []), ...(wholesalePrev.byEntity || [])].forEach(e => {
+      const key = String(e.name || '').toLowerCase().trim();
+      if (!key) return;
+      wholesaleRev.set(key, (wholesaleRev.get(key) || 0) + (Number(e.revenue) || 0));
+    });
+    // Bangun map nama → total revenue dari curData + prevData (non-wholesale context).
+    const entityTotalRev = new Map();
+    [...(curData.byEntity || []), ...(prevData.byEntity || [])].forEach(e => {
+      const key = String(e.name || '').toLowerCase().trim();
+      if (!key) return;
+      entityTotalRev.set(key, (entityTotalRev.get(key) || 0) + (Number(e.revenue) || 0));
+    });
 
     const fmtMonth = (d) => {
       const dt = new Date(d);
@@ -2288,12 +2298,20 @@ async function renderGrowth() {
       })).sort((a, b) => (b.curRev || 0) - (a.curRev || 0));
     };
 
-    // Exclude wholesale entities — match by name set dari wholesale fetch + pattern "wholesale" di nama.
+    // Exclude wholesale entities — regex "wholesale" di nama + revenue-share check.
+    // Entity dianggap wholesale kalau >=50% revenue total dia dari channel wholesale.
+    // Ini hindari false-positive: misal Shopee punya 1 stray row di wholesale 2025
+    // (Rp 149rb vs Rp 8M di online) → share <<1%, tetap di-keep.
     const WHOLESALE_NAME_RX = /\bwholesale\b/i;
     const notWholesale = (e) => {
       const name = String(e.name || '');
       if (WHOLESALE_NAME_RX.test(name)) return false;
-      return !wholesaleNames.has(name.toLowerCase().trim());
+      const key = name.toLowerCase().trim();
+      const wsRev = wholesaleRev.get(key) || 0;
+      if (wsRev <= 0) return true; // gak pernah di wholesale
+      const totRev = entityTotalRev.get(key) || 0;
+      if (totRev <= 0) return true;
+      return (wsRev / totRev) < 0.5; // <50% wholesale → keep
     };
     const curEntities = (curData.byEntity || []).filter(notWholesale);
     const prevEntities = (prevData.byEntity || []).filter(notWholesale);

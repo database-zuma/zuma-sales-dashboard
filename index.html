@@ -585,6 +585,7 @@ table.data tfoot td {
     <button class="tab-btn" data-tab="target">Target</button>
     <button class="tab-btn" data-tab="refund">Refund</button>
     <button class="tab-btn" data-tab="promo">Promo</button>
+    <button class="tab-btn" data-tab="growth">Growth</button>
   </nav>
 
   <!-- GLOBAL ERROR -->
@@ -876,6 +877,11 @@ table.data tfoot td {
         <div class="muted" style="font-size:11px;">Scan SKU dengan diskon rata-rata > 25%...</div>
       </div>
     </div>
+  </section>
+
+  <!-- ========= TAB: GROWTH (YoY) ========= -->
+  <section class="tab-content" id="tab-growth">
+    <div id="growthContent"><div class="loading"><div class="spinner"></div>Memuat growth…</div></div>
   </section>
 
   <!-- FOOTER -->
@@ -2181,6 +2187,148 @@ function renderPromo(data) {
   }
 }
 
+// ============ GROWTH (YoY) ============
+// Bandingin periode sekarang vs periode yang sama tahun lalu — by store, gender, series.
+// Pakai loadChannel dengan date range tahun-1 (cache by URL params sudah otomatis bedain).
+function _shiftDateYear(dateStr, delta) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  d.setFullYear(d.getFullYear() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+async function renderGrowth() {
+  const wrap = document.getElementById('growthContent');
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat growth (fetch 2 periode)…</div>';
+  try {
+    const curData = state.rawData || {};
+    const prevFrom = _shiftDateYear(state.from, -1);
+    const prevTo = _shiftDateYear(state.to, -1);
+    const prevData = await loadChannel(state.channel, prevFrom, prevTo);
+
+    const fmtMonth = (d) => {
+      const dt = new Date(d);
+      return isNaN(dt) ? d : dt.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+    };
+    const periodLabel = `${fmtMonth(state.from)} – ${fmtMonth(state.to)}`;
+    const prevLabel   = `${fmtMonth(prevFrom)} – ${fmtMonth(prevTo)}`;
+
+    const curKpi = (curData && curData.kpis) || {};
+    const prevKpi = (prevData && prevData.kpis) || {};
+    const delta = (cur, prev) => {
+      if (!prev) return null;
+      return ((cur - prev) / prev) * 100;
+    };
+    const pctHtml = (pct) => {
+      if (pct === null || !isFinite(pct)) return '<span class="muted">—</span>';
+      const up = pct >= 0;
+      const color = up ? '#16a34a' : '#dc2626';
+      const arrow = up ? '▲' : '▼';
+      return `<span style="color:${color};font-weight:700;">${up?'+':''}${pct.toFixed(1)}% ${arrow}</span>`;
+    };
+
+    const curRev = Number(curKpi.revenue) || 0;
+    const prevRev = Number(prevKpi.revenue) || 0;
+    const curQty = Number(curKpi.pairs) || 0;
+    const prevQty = Number(prevKpi.pairs) || 0;
+
+    // Aggregate per dimension — key by lowercase name, value = {curRev, curQty, prevRev, prevQty}.
+    const buildDim = (curArr, prevArr) => {
+      const m = new Map();
+      const put = (arr, which) => {
+        (arr || []).forEach(r => {
+          const key = String(r.name || '-').toLowerCase().trim();
+          if (!key) return;
+          const cur = m.get(key) || { name: r.name || '-', curRev: 0, curQty: 0, prevRev: 0, prevQty: 0 };
+          cur[which + 'Rev'] += Number(r.revenue) || 0;
+          cur[which + 'Qty'] += Number(r.pairs) || 0;
+          // Simpan nama versi paling baru (prefer display cur)
+          if (which === 'cur' && r.name) cur.name = r.name;
+          m.set(key, cur);
+        });
+      };
+      put(curArr, 'cur');
+      put(prevArr, 'prev');
+      return Array.from(m.values()).map(r => ({
+        ...r,
+        dRev: delta(r.curRev, r.prevRev),
+        dQty: delta(r.curQty, r.prevQty),
+      })).sort((a, b) => (b.curRev || 0) - (a.curRev || 0));
+    };
+
+    const byStore = buildDim(curData.byEntity, prevData.byEntity);
+    const byGender = buildDim(curData.byGender, prevData.byGender);
+    const bySeries = buildDim(curData.bySeries, prevData.bySeries);
+
+    const rowTag = (r) => {
+      if (r.prevRev === 0 && r.curRev > 0) return '<span style="background:#dcfce7;color:#166534;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;">NEW</span>';
+      if (r.curRev === 0 && r.prevRev > 0) return '<span style="background:#fee2e2;color:#991b1b;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;">CLOSED</span>';
+      return '';
+    };
+
+    const tableHtml = (title, rows, nameLabel) => {
+      if (!rows.length) return '';
+      return `<div class="card">
+        <div class="card-header"><div class="card-title">${title}</div></div>
+        <div class="table-wrap" style="max-height:440px;overflow:auto;">
+          <table class="data">
+            <thead><tr>
+              <th class="center" style="width:36px;">#</th>
+              <th>${nameLabel}</th>
+              <th class="right">${prevLabel}<br><span class="muted" style="font-weight:400;">Revenue</span></th>
+              <th class="right">${periodLabel}<br><span class="muted" style="font-weight:400;">Revenue</span></th>
+              <th class="center">Δ Value</th>
+              <th class="right">${prevLabel}<br><span class="muted" style="font-weight:400;">Qty</span></th>
+              <th class="right">${periodLabel}<br><span class="muted" style="font-weight:400;">Qty</span></th>
+              <th class="center">Δ Qty</th>
+              <th class="center">Tag</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map((r, i) => `<tr>
+                <td class="center muted">${i+1}</td>
+                <td class="strong">${escapeHtml(titleCaseEntity(r.name))}</td>
+                <td class="right muted">${fmtRpShort(r.prevRev)}</td>
+                <td class="right strong">${fmtRpShort(r.curRev)}</td>
+                <td class="center">${pctHtml(r.dRev)}</td>
+                <td class="right muted">${fmtNum(r.prevQty)}</td>
+                <td class="right strong">${fmtNum(r.curQty)}</td>
+                <td class="center">${pctHtml(r.dQty)}</td>
+                <td class="center">${rowTag(r)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    };
+
+    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
+
+    wrap.innerHTML = `
+      <div style="margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;font-size:12px;color:#475569;">
+        <strong style="color:#002A3A;">Growth YoY</strong> · ${periodLabel} vs ${prevLabel} · Channel: <strong>${state.channel}</strong>
+      </div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:640px;margin-bottom:14px;">
+        <div class="kpi-card kpi-primary">
+          <div class="kpi-label">Value Growth</div>
+          <span class="kpi-value-wrap"><span class="kpi-value">${pctHtml(delta(curRev, prevRev))}</span></span>
+          <div class="kpi-sub">${fmtRpShort(prevRev)} → ${fmtRpShort(curRev)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Qty Growth</div>
+          <span class="kpi-value-wrap"><span class="kpi-value">${pctHtml(delta(curQty, prevQty))}</span></span>
+          <div class="kpi-sub">${fmtNum(prevQty)} → ${fmtNum(curQty)} pairs</div>
+        </div>
+      </div>
+      ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel)}
+      ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
+      ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
+    `;
+  } catch (e) {
+    console.error('renderGrowth', e);
+    wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat growth: ${escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+
 // ============ TARGET (lazy fetch) ============
 // Area-level rollup targets — these are aggregate region targets in the Google Sheet,
 // not actual stores. Skip them so they don't show as fake rows or get duplicated across
@@ -3174,6 +3322,7 @@ function renderActiveTab(data) {
       else renderTarget();
     }
     else if (tab === 'refund') renderRefund();   // lazy fetch
+    else if (tab === 'growth') renderGrowth();   // lazy fetch (2 periods)
   } catch (e) { console.error('renderActiveTab', tab, e); }
 }
 

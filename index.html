@@ -1250,18 +1250,17 @@ function _areaMatches(storeArea, selectedArea) {
 
 // Expand rollup parent areas (e.g., "Bali") ke semua sub-area ("Bali 1","Bali 2","Bali 3")
 // supaya backend yang exact-match `area = value` tetap dapat semua toko.
-// Sumber: _allStoreOptions dari ref-options (setiap toko punya .area sub-spesifik).
+// Sumber: referenceOptions.areas (dari /api/sales/filter-options).
+// Fallback: rawData.byArea kalau reference belum loaded.
 function expandSelectedAreas(selected) {
   if (!Array.isArray(selected) || !selected.length) return selected;
-  const allSubAreas = new Set(
-    (state._allStoreOptions || [])
-      .map(s => String(s.area || '').trim())
-      .filter(Boolean)
-  );
+  const refAreas = (state.referenceOptions && state.referenceOptions.areas) || [];
+  const rawAreas = ((state.rawData && state.rawData.byArea) || []).map(a => String(a.name || '').trim());
+  const allAreas = new Set([...refAreas, ...rawAreas].map(a => String(a || '').trim()).filter(Boolean));
   const out = new Set(selected);
   selected.forEach(sel => {
     const selN = String(sel).trim().toLowerCase();
-    allSubAreas.forEach(a => {
+    allAreas.forEach(a => {
       const aN = a.toLowerCase();
       if (aN !== selN && aN.startsWith(selN + ' ')) out.add(a);
     });

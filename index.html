@@ -2449,7 +2449,7 @@ async function renderTarget() {
 // Wide per-store table with one column-block per month (Qty / Rev / Target / Ach%).
 // Filter-independent on date range: always shows the full selected year range.
 // Compact mode hides Qty/Rev/Target, shows only Ach% per month (24 cols for 2 years).
-const matrixState = { yearStart: 2025, yearEnd: 2026, compact: false };
+const matrixState = { yearStart: 2026, yearEnd: 2026, compact: false };
 
 async function renderTargetMatrix() {
   const wrap = document.getElementById('targetMatrixContent');
@@ -2606,11 +2606,11 @@ async function renderTargetMatrix() {
           <div style="display:flex;gap:6px;align-items:center;">
             <label style="font-size:11px;color:#64748b;">Year range:</label>
             <select id="mxYearStart" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;">
-              ${[2024,2025,2026].map(y => `<option value="${y}" ${y===yearStart?'selected':''}>${y}</option>`).join('')}
+              ${[2025,2026].map(y => `<option value="${y}" ${y===yearStart?'selected':''}>${y}</option>`).join('')}
             </select>
             <span style="color:#94a3b8;">—</span>
             <select id="mxYearEnd" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;">
-              ${[2024,2025,2026].map(y => `<option value="${y}" ${y===yearEnd?'selected':''}>${y}</option>`).join('')}
+              ${[2025,2026].map(y => `<option value="${y}" ${y===yearEnd?'selected':''}>${y}</option>`).join('')}
             </select>
             <button id="mxToggle" class="btn-ghost" style="margin-left:8px;">${compact ? '📊 Expanded' : '📎 Compact'}</button>
             <button id="mxCsv" class="btn-ghost">CSV</button>

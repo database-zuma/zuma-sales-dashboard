@@ -568,7 +568,7 @@ table.data tfoot td {
         </div>
         <div class="sku-suggestions" id="skuSuggestions" hidden></div>
       </div>
-      <button class="toggle-btn" id="btnSkuOnly">SKU Only: OFF</button>
+      <button class="toggle-btn active" id="btnSkuOnly">⏻ Sandal Only: ON</button>
     </div>
   </div>
 
@@ -919,7 +919,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.35';
+const APP_VERSION = 'v1.36';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3206,12 +3206,13 @@ function setupEvents() {
   // SKU typeahead — debounced, min 3 chars, multi-select via chips
   setupSkuTypeahead();
 
-  // SKU Only toggle: OFF (default) = hide non-sandal items; ON = include accessories (bags/inbox/etc)
+  // Sandal Only toggle: ON (default) = cuma sandal; OFF = tampil semua (bags/inbox/accessories)
   document.getElementById('btnSkuOnly').onclick = async (e) => {
     state.skuOnly = !state.skuOnly;
-    e.target.classList.toggle('active', state.skuOnly);
-    e.target.textContent = 'SKU Only: ' + (state.skuOnly ? 'ON' : 'OFF');
-    e.target.title = state.skuOnly ? 'ON = include bags/inbox/accessories' : 'OFF = sandal only (default)';
+    const sandalOnly = !state.skuOnly;
+    e.target.classList.toggle('active', sandalOnly);
+    e.target.textContent = '⏻ Sandal Only: ' + (sandalOnly ? 'ON' : 'OFF');
+    e.target.title = sandalOnly ? 'ON = cuma sandal (default)' : 'OFF = tampil semua termasuk bags/inbox/accessories';
     await loadReferenceOptions();  // ref list also changes (accessories appear/disappear)
     refresh({ reloadData: true });
   };
@@ -3226,8 +3227,8 @@ function setupEvents() {
     document.getElementById('fSearch').value = '';
     renderSkuChips();
     const skuBtn = document.getElementById('btnSkuOnly');
-    skuBtn.classList.remove('active');
-    skuBtn.textContent = 'SKU Only: OFF';
+    skuBtn.classList.add('active');
+    skuBtn.textContent = '⏻ Sandal Only: ON';
     refresh({ reloadData: true });
   };
 

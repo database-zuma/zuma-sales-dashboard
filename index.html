@@ -2485,9 +2485,9 @@ async function renderTargetMatrix() {
 
     // Head
     const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Store';
-    const stickyHeadCss = 'position:sticky;top:0;background:#fff;color:#1f2937;z-index:3;';
+    const stickyHeadCss = 'position:sticky;top:0;background:#002A3A;color:#fff;z-index:3;';
     const stickyFirstCss = 'position:sticky;left:0;background:#fff;color:#1f2937;z-index:2;';
-    const stickyCornerCss = 'position:sticky;left:0;top:0;background:#fff;color:#1f2937;z-index:4;';
+    const stickyCornerCss = 'position:sticky;left:0;top:0;background:#002A3A;color:#fff;z-index:4;';
     const colSpan = compact ? 1 : 4;
 
     const headRow1 = `
@@ -2503,10 +2503,10 @@ async function renderTargetMatrix() {
         <th style="${stickyCornerCss};top:28px;left:36px;"></th>
         <th style="${stickyCornerCss};top:28px;left:256px;"></th>
         ${months.map(_ => `
-          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Qty</th>
-          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Rev</th>
-          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Tgt</th>
-          <th class="right" style="${stickyHeadCss};top:28px;font-size:10px;">Ach%</th>`).join('')}
+          <th class="center" style="${stickyHeadCss};top:28px;font-size:10px;">Qty</th>
+          <th class="center" style="${stickyHeadCss};top:28px;font-size:10px;">Rev</th>
+          <th class="center" style="${stickyHeadCss};top:28px;font-size:10px;">Tgt</th>
+          <th class="center" style="${stickyHeadCss};top:28px;font-size:10px;">Ach%</th>`).join('')}
       </tr>`;
 
     // Sort: tracked first (by overall achievement asc — worst first), then untracked

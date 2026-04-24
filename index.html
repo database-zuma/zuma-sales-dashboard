@@ -1020,7 +1020,7 @@ function setProgress(key, state) {
 
 // Single pre-aggregated endpoint call. Returns a payload dict, not raw rows:
 //   { kpis, timeSeries, byChannel, byArea, byEntity, byGender, bySeries, byTier, byTipe, bySize, rankByArticle }
-async function loadChannel(channel, from, to) {
+async function loadChannel(channel, from, to, opts = {}) {
   const sandalOnly = !state.skuOnly;
   const qs = new URLSearchParams({
     channel, from, to,
@@ -1045,7 +1045,8 @@ async function loadChannel(channel, from, to) {
   setProgress(channel, 'loading');
   const t0 = performance.now();
   try {
-    const data = await fetchAPI('/api/sales/dashboard?' + qs.toString(), { group: 'dashboard' });
+    const group = opts.group !== undefined ? opts.group : 'dashboard';
+    const data = await fetchAPI('/api/sales/dashboard?' + qs.toString(), { group });
     const dt = Math.round((performance.now() - t0) / 100) / 10;
     setProgress(channel, { ok: true, dt });
     cache[cacheKey] = data;
@@ -2204,11 +2205,12 @@ async function renderGrowth() {
     const curData = state.rawData || {};
     const prevFrom = _shiftDateYear(state.from, -1);
     const prevTo = _shiftDateYear(state.to, -1);
-    // Parallel fetch: prev period + wholesale entity list (untuk exclude dari store table)
+    // Parallel fetch pakai group beda biar gak saling abort (semuanya di group 'dashboard'
+    // bakal SUPERSEDED satu sama lain karena fetchAPI group-abort).
     const [prevData, wholesaleCur, wholesalePrev] = await Promise.all([
-      loadChannel(state.channel, prevFrom, prevTo),
-      loadChannel('wholesale', state.from, state.to).catch(() => ({ byEntity: [] })),
-      loadChannel('wholesale', prevFrom, prevTo).catch(() => ({ byEntity: [] })),
+      loadChannel(state.channel, prevFrom, prevTo, { group: 'growth-prev' }),
+      loadChannel('wholesale', state.from, state.to, { group: 'growth-ws-cur' }).catch(() => ({ byEntity: [] })),
+      loadChannel('wholesale', prevFrom, prevTo, { group: 'growth-ws-prev' }).catch(() => ({ byEntity: [] })),
     ]);
     const wholesaleNames = new Set([
       ...((wholesaleCur.byEntity || []).map(e => String(e.name || '').toLowerCase().trim())),
@@ -2342,6 +2344,10 @@ async function renderGrowth() {
       ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
     `;
   } catch (e) {
+    // Filter change bikin fetch terabort — silent skip, next refresh akan re-render.
+    if (e && (e.superseded || e.name === 'AbortError' || String(e?.message || '').includes('SUPERSEDED'))) {
+      return;
+    }
     console.error('renderGrowth', e);
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat growth: ${escapeHtml(e.message || String(e))}</div>`;
   }

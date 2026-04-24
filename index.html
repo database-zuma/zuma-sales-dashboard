@@ -2265,8 +2265,13 @@ async function renderGrowth() {
       })).sort((a, b) => (b.curRev || 0) - (a.curRev || 0));
     };
 
-    // Exclude wholesale entities — match by nama yang muncul di wholesale fetch.
-    const notWholesale = (e) => !wholesaleNames.has(String(e.name || '').toLowerCase().trim());
+    // Exclude wholesale entities — match by name set dari wholesale fetch + pattern "wholesale" di nama.
+    const WHOLESALE_NAME_RX = /\bwholesale\b/i;
+    const notWholesale = (e) => {
+      const name = String(e.name || '');
+      if (WHOLESALE_NAME_RX.test(name)) return false;
+      return !wholesaleNames.has(name.toLowerCase().trim());
+    };
     const curEntities = (curData.byEntity || []).filter(notWholesale);
     const prevEntities = (prevData.byEntity || []).filter(notWholesale);
     const byStore = buildDim(curEntities, prevEntities);

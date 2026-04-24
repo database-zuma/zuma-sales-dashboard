@@ -497,6 +497,40 @@ table.data tfoot td {
 </head>
 <body>
 
+<!-- Initial load overlay (hidden after data ready) -->
+<style>
+#api-loading-overlay {
+  position: fixed; inset: 0; background: rgba(246,247,249,0.97);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 9999; font-family: 'Inter', system-ui, sans-serif;
+}
+#api-loading-overlay .spinner {
+  width: 32px; height: 32px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: loadspin 0.8s linear infinite;
+  margin-bottom: 14px;
+}
+@keyframes loadspin { to { transform: rotate(360deg); } }
+#loadingProgressWrap {
+  width: 240px; height: 5px; background: var(--border);
+  border-radius: 10px; overflow: hidden; margin-top: 12px;
+}
+#loadingProgressBar {
+  width: 0%; height: 100%;
+  background: linear-gradient(90deg, var(--navy), var(--accent));
+  border-radius: 10px; transition: width 0.35s ease;
+}
+#loadingStatus { font-size: 12px; color: var(--fg-muted); margin-top: 10px; font-weight: 500; }
+#loadingPercent { font-size: 10px; color: var(--fg-muted); margin-top: 4px; font-weight: 700; letter-spacing: 0.08em; }
+</style>
+<div id="api-loading-overlay">
+  <div class="spinner"></div>
+  <div style="font-weight:600;font-size:13px;color:var(--fg);">Memuat Zuma Sales Analytics</div>
+  <div id="loadingProgressWrap"><div id="loadingProgressBar"></div></div>
+  <div id="loadingStatus">Menghubungi server…</div>
+  <div id="loadingPercent">0%</div>
+</div>
+
 <div class="top-strip"></div>
 
 <div class="shell">
@@ -3585,9 +3619,23 @@ function init() {
   document.getElementById('fPeriodeAkhir').min = state.from;
 
   setupEvents();
-  // Load reference options (for dropdowns) + initial data in parallel
-  loadReferenceOptions();
-  refresh({ reloadData: true });
+  // Initial load dengan progress overlay
+  const overlay = document.getElementById('api-loading-overlay');
+  const bar = document.getElementById('loadingProgressBar');
+  const pct = document.getElementById('loadingPercent');
+  const status = document.getElementById('loadingStatus');
+  const setProg = (p, label) => {
+    if (bar) bar.style.width = p + '%';
+    if (pct) pct.textContent = p + '%';
+    if (status && label) status.textContent = label;
+  };
+  setProg(10, 'Menghubungi server…');
+  const refPromise = loadReferenceOptions().then(() => setProg(50, 'Filter options ✓ — memuat data channel…'));
+  const refreshPromise = refresh({ reloadData: true }).then(() => setProg(100, 'Siap ✓'));
+  Promise.all([refPromise, refreshPromise]).finally(() => {
+    setProg(100, 'Siap ✓');
+    setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 300);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);

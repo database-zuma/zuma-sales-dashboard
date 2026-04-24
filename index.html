@@ -2204,7 +2204,16 @@ async function renderGrowth() {
     const curData = state.rawData || {};
     const prevFrom = _shiftDateYear(state.from, -1);
     const prevTo = _shiftDateYear(state.to, -1);
-    const prevData = await loadChannel(state.channel, prevFrom, prevTo);
+    // Parallel fetch: prev period + wholesale entity list (untuk exclude dari store table)
+    const [prevData, wholesaleCur, wholesalePrev] = await Promise.all([
+      loadChannel(state.channel, prevFrom, prevTo),
+      loadChannel('wholesale', state.from, state.to).catch(() => ({ byEntity: [] })),
+      loadChannel('wholesale', prevFrom, prevTo).catch(() => ({ byEntity: [] })),
+    ]);
+    const wholesaleNames = new Set([
+      ...((wholesaleCur.byEntity || []).map(e => String(e.name || '').toLowerCase().trim())),
+      ...((wholesalePrev.byEntity || []).map(e => String(e.name || '').toLowerCase().trim())),
+    ].filter(Boolean));
 
     const fmtMonth = (d) => {
       const dt = new Date(d);
@@ -2256,8 +2265,8 @@ async function renderGrowth() {
       })).sort((a, b) => (b.curRev || 0) - (a.curRev || 0));
     };
 
-    // Exclude wholesale entities — Growth table fokus ke toko retail, consig, online.
-    const notWholesale = (e) => String(e.channel || '').toLowerCase() !== 'wholesale';
+    // Exclude wholesale entities — match by nama yang muncul di wholesale fetch.
+    const notWholesale = (e) => !wholesaleNames.has(String(e.name || '').toLowerCase().trim());
     const curEntities = (curData.byEntity || []).filter(notWholesale);
     const prevEntities = (prevData.byEntity || []).filter(notWholesale);
     const byStore = buildDim(curEntities, prevEntities);

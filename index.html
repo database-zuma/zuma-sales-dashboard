@@ -3548,18 +3548,28 @@ function setupEvents() {
     refresh({ reloadData: true });
   };
 
-  // Reset — clears all filters, chips, and toggle
+  // Reset — clears all filters, chips, toggle, tanggal, channel → full back to default
   document.getElementById('btnReset').onclick = () => {
     state.area = []; state.store = []; state.gender = []; state.series = []; state.tier = [];
     state.sku = []; state.search = '';
     state.skuOnly = false;
     state.page = 1;
+    // Reset tanggal ke default (YTD: 1 Jan tahun ini - hari ini)
+    state.from = firstOfYear();
+    state.to = todayStr();
+    document.getElementById('fPeriodeMulai').value = state.from;
+    document.getElementById('fPeriodeAkhir').value = state.to;
+    // Reset channel ke default Global
+    state.channel = 'global';
+    const chSel = document.getElementById('fChannel');
+    if (chSel) chSel.value = 'global';
     Object.values(window._msx || {}).forEach(inst => inst && inst.setSelected([]));
     document.getElementById('fSearch').value = '';
     renderSkuChips();
     const skuBtn = document.getElementById('btnSkuOnly');
     skuBtn.classList.add('active');
     skuBtn.textContent = '⏻ Sandal Only: ON';
+    loadReferenceOptions();
     refresh({ reloadData: true });
   };
 

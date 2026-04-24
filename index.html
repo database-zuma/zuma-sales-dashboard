@@ -2257,8 +2257,6 @@ async function renderGrowth() {
     };
 
     const byStore = buildDim(curData.byEntity, prevData.byEntity);
-    const byGender = buildDim(curData.byGender, prevData.byGender);
-    const bySeries = buildDim(curData.bySeries, prevData.bySeries);
 
     const rowTag = (r) => {
       if (r.prevRev === 0 && r.curRev > 0) return '<span style="background:#dcfce7;color:#166534;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;">NEW</span>';
@@ -2320,8 +2318,6 @@ async function renderGrowth() {
         </div>
       </div>
       ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel)}
-      ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
-      ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
     `;
   } catch (e) {
     console.error('renderGrowth', e);

@@ -2549,14 +2549,21 @@ async function renderTargetMatrix() {
           <th class="center" style="${stickyHeadCss};top:28px;font-size:10px;">Ach%</th>`).join('')}
       </tr>`;
 
-    // Sort: tracked first (by overall achievement asc — worst first), then untracked
-    // (by total_revenue desc — biggest unclaimed stores first). Visual separator between.
+    // Sort: both tracked + untracked by area ASC (alphabetical), then store name ASC.
+    const areaSort = (a, b) => {
+      const aa = String(a.area || '').toLowerCase();
+      const bb = String(b.area || '').toLowerCase();
+      if (aa !== bb) return aa < bb ? -1 : 1;
+      const an = String(a.name || '').toLowerCase();
+      const bn = String(b.name || '').toLowerCase();
+      return an < bn ? -1 : an > bn ? 1 : 0;
+    };
     const tracked = stores.filter(s => s.total_target > 0).map(s => {
       const pct = s.total_target ? (s.total_revenue / s.total_target * 100) : 0;
       return { ...s, _overallPct: pct };
-    }).sort((a, b) => a._overallPct - b._overallPct);
+    }).sort(areaSort);
     const untracked = stores.filter(s => s.total_target === 0 && s.total_revenue > 0)
-      .sort((a, b) => b.total_revenue - a.total_revenue);
+      .sort(areaSort);
 
     const totalCols = 3 + months.length * (compact ? 1 : 4);
 
@@ -2591,7 +2598,7 @@ async function renderTargetMatrix() {
           ${label} (${count})
         </td>
       </tr>`;
-    const trackedHead = tracked.length ? sectionHeader('✅ Tracked — sorted by achievement ascending', '#ecfdf5', tracked.length) : '';
+    const trackedHead = tracked.length ? sectionHeader('✅ Tracked — sorted by area', '#ecfdf5', tracked.length) : '';
     const trackedRowsHtml = tracked.map((s, i) => renderRow(s, i + 1, false)).join('');
     const untrackedHead = untracked.length ? sectionHeader('⚠️ Untracked — belum ada target', '#f1f5f9', untracked.length) : '';
     const untrackedRowsHtml = untracked.map((s, i) => renderRow(s, i + 1, true)).join('');

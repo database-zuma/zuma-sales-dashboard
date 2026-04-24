@@ -2251,8 +2251,9 @@ function targetFuzzyMatch(a, b) {
 async function renderTarget() {
   const wrap = document.getElementById('targetContent');
 
-  if (state.channel === 'global') {
-    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Pilih channel spesifik (Retail / Online / Consig / Wholesale) untuk melihat target.</div>';
+  const TARGET_CHANNELS = new Set(['retail', 'consig', 'event']);
+  if (!TARGET_CHANNELS.has(state.channel)) {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Target tersedia hanya untuk channel <strong>Retail</strong>, <strong>Consig</strong>, atau <strong>Event</strong>.</div>';
     return;
   }
 
@@ -2456,8 +2457,9 @@ const matrixState = { yearStart: 2026, yearEnd: 2026, compact: false };
 async function renderTargetMatrix() {
   const wrap = document.getElementById('targetMatrixContent');
 
-  if (state.channel === 'global') {
-    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Pilih channel spesifik untuk melihat monthly trend.</div>';
+  const TARGET_CHANNELS = new Set(['retail', 'consig', 'event']);
+  if (!TARGET_CHANNELS.has(state.channel)) {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Monthly Trend tersedia hanya untuk channel <strong>Retail</strong>, <strong>Consig</strong>, atau <strong>Event</strong>.</div>';
     return;
   }
 

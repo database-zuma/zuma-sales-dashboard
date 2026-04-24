@@ -3337,7 +3337,8 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('lastUpdate').textContent = state.lastUpdate.toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
   } catch (e) {
     // Bail early on cancelled/superseded fetches — they're expected during fast filter switching.
-    if (e && (e.superseded || e.name === 'AbortError' || String(e?.message || '').includes('SUPERSEDED'))) {
+    const msgStr = String(e?.message || e?.detail || e || '');
+    if (e && (e.superseded || e.name === 'AbortError' || /supersed/i.test(msgStr))) {
       return;
     }
     console.error('[refresh]', e);

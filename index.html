@@ -2638,17 +2638,22 @@ async function renderRefund() {
     //                by_article:[{article, refund_qty, refund_value}],
     //                detail:[...]}
     // VPS backend belum honor sku_only di endpoint ini — client-side blacklist
-    // pattern untuk non-SKU items (shopbag, inbox, hanger, dll). Hanya filter
-    // by_article, KPI summary tetap pakai angka backend.
+    // pattern untuk non-SKU items (shopbag, inbox, hanger, dll).
     const NON_SKU_RX = /(shop\s*bag|shopping\s*bag|paper\s*bag|paperbag|shopbag|hanger|inbox|kotak\s*sepatu|dus\s*sepatu|packaging|kaos\s*kaki|accessor(y|ies)|ongkir|ongkos|delivery)/i;
-    let byArticleRaw = data.by_article || [];
-    if (sandalOnly) {
-      byArticleRaw = byArticleRaw.filter(r => {
-        const txt = `${r.article || ''} ${r.series || ''} ${r.gender || ''}`;
-        return !NON_SKU_RX.test(txt);
-      });
-    }
-    const summary = data.summary || {};
+    const isNonSku = (r) => NON_SKU_RX.test(`${r.article || ''} ${r.series || ''} ${r.gender || ''}`);
+    const allArticles = data.by_article || [];
+    const nonSkuArticles = allArticles.filter(isNonSku);
+    const nonSkuQty = nonSkuArticles.reduce((s, r) => s + Number(r.refund_qty || 0), 0);
+    const nonSkuVal = nonSkuArticles.reduce((s, r) => s + Number(r.refund_value || 0), 0);
+    const byArticleRaw = sandalOnly ? allArticles.filter(r => !isNonSku(r)) : allArticles;
+    // Subtract non-SKU contrib dari summary KPI ketika sandalOnly
+    const rawSummary = data.summary || {};
+    const summary = sandalOnly
+      ? {
+          refund_qty: Math.max(0, Number(rawSummary.refund_qty || 0) - nonSkuQty),
+          refund_value: Math.max(0, Number(rawSummary.refund_value || 0) - nonSkuVal),
+        }
+      : rawSummary;
     const byStore = (data.by_store || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
     const bySpg   = (data.by_spg   || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
     const byArea  = (data.by_area  || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));

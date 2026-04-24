@@ -2003,6 +2003,11 @@ function renderSpg(data) {
 
 // ============ RENDER PROMO ============
 function renderPromo(data) {
+  if (state.channel !== 'retail') {
+    const tabEl = document.getElementById('tab-promo');
+    if (tabEl) tabEl.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Data promo hanya tersedia untuk channel <strong>Retail</strong>.</div>';
+    return;
+  }
   const p = data.promoSummary || {};
   const totalRev = Number(p.totalRevenue) || 0;
   const totalDisc = Number(p.totalDiscount) || 0;

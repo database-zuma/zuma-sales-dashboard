@@ -2463,12 +2463,52 @@ async function renderTargetMatrix() {
   try {
     const { yearStart, yearEnd, compact } = matrixState;
     const url = `/api/targets/achievement-matrix?channel=${encodeURIComponent(state.channel)}&year_start=${yearStart}&year_end=${yearEnd}`;
-    const data = await fetchAPI(url);
+    // Parallel fetch: matrix data + /api/targets untuk fuzzy-match untracked stores
+    // (sama mekanisme yang dipakai tab Current Period biar nama mismatch kebaca).
+    const [data, targetsRaw] = await Promise.all([
+      fetchAPI(url),
+      fetchAPI('/api/targets').catch(() => ({})),
+    ]);
     const stores = data.stores || [];
     if (!stores.length) {
       wrap.innerHTML = `<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Tidak ada data matrix untuk ${state.channel} ${yearStart}–${yearEnd}.</div>`;
       return;
     }
+
+    // Fuzzy-match stores yang total_target=0 ke /api/targets (nama beda sedikit).
+    const MONTH_SHORT = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
+    const normalize = s => String(s || '').toLowerCase().trim();
+    const allTargets = (Array.isArray(targetsRaw)
+      ? targetsRaw
+      : Object.values(targetsRaw || {}))
+      .filter(t => t && typeof t === 'object' && (t.store || t.toko))
+      .filter(t => !TARGET_AREA_ROLLUPS.has(normalize(t.store || t.toko)));
+    const usedSheetKeys = new Set();
+    let fuzzyMatchCount = 0;
+    stores.forEach(s => {
+      if (Number(s.total_target || 0) > 0) return;
+      if (!s.name || !(Number(s.total_revenue || 0) > 0)) return;
+      const fuzzy = allTargets.find(t => {
+        const sheetKey = normalize(t.store || t.toko);
+        if (usedSheetKeys.has(sheetKey)) return false;
+        return targetFuzzyMatch(s.name, t.store || t.toko || '');
+      });
+      if (!fuzzy) return;
+      usedSheetKeys.add(normalize(fuzzy.store || fuzzy.toko));
+      const targetYear = Number(fuzzy.year) || yearEnd;
+      if (!s.months) s.months = {};
+      let injected = 0;
+      MONTH_SHORT.forEach((mk, idx) => {
+        const key = `${targetYear}_${idx + 1}`;
+        if (!s.months[key]) s.months[key] = { qty: 0, revenue: 0, target: 0 };
+        const v = Number(fuzzy[mk]) || 0;
+        s.months[key].target = v;
+        injected += v;
+      });
+      s.total_target = Number(s.total_target || 0) + injected;
+      s._fuzzyMatched = fuzzy.store || fuzzy.toko;
+      if (injected > 0) fuzzyMatchCount++;
+    });
 
     const MONTH_LABEL = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const years = [];

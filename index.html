@@ -3632,9 +3632,12 @@ function init() {
     if (status && label) status.textContent = label;
   };
   setProg(10, 'Menghubungi server…');
-  const refPromise = loadReferenceOptions().then(() => setProg(50, 'Filter options ✓ — memuat data channel…'));
-  const refreshPromise = refresh({ reloadData: true }).then(() => setProg(100, 'Siap ✓'));
+  // Hard safety timer — overlay auto-hide 15 detik no matter what, biar gak stuck ngeblok UI
+  const safetyTimer = setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 15000);
+  const refPromise = loadReferenceOptions().then(() => setProg(50, 'Filter options ✓ — memuat data channel…')).catch(e => console.warn('ref', e));
+  const refreshPromise = refresh({ reloadData: true }).then(() => setProg(100, 'Siap ✓')).catch(e => console.warn('refresh', e));
   Promise.all([refPromise, refreshPromise]).finally(() => {
+    clearTimeout(safetyTimer);
     setProg(100, 'Siap ✓');
     setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 300);
   });

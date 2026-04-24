@@ -2435,14 +2435,6 @@ async function renderTarget() {
       </div>` : '';
 
     wrap.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
-        <div class="kpi-card kpi-primary"><div class="kpi-label">Target · ${chLabel} (${monthLabel})</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totTarget)}</span></span><div class="kpi-sub">tracked only</div></div>
-        <div class="kpi-card"><div class="kpi-label">Revenue (tracked)</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(totRev)}</span></span><div class="kpi-sub">actual</div></div>
-        <div class="kpi-card"><div class="kpi-label">Qty (tracked)</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(totQty)}</span></span><div class="kpi-sub">pairs</div></div>
-        <div class="kpi-card"><div class="kpi-label">Achievement</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:${totPct>=100?'#16a34a':totPct>=80?'#f59e0b':'#dc2626'};">${totPct.toFixed(1)}%</span></span><div class="kpi-sub">overall</div></div>
-        <div class="kpi-card"><div class="kpi-label">✅ Sudah Achieve</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#16a34a;">${achieved.length}</span></span><div class="kpi-sub">toko ≥100%</div></div>
-        <div class="kpi-card"><div class="kpi-label">⚠️ Belum Achieve</div><span class="kpi-value-wrap"><span class="kpi-value" style="color:#dc2626;">${notYet.length}</span></span><div class="kpi-sub">toko &lt;100%</div></div>
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
         <div style="min-width:0;">${achievedCard}</div>
         <div style="min-width:0;">${notYetCard}</div>
@@ -2493,9 +2485,9 @@ async function renderTargetMatrix() {
 
     // Head
     const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Store';
-    const stickyHeadCss = 'position:sticky;top:0;background:#fff;z-index:3;';
-    const stickyFirstCss = 'position:sticky;left:0;background:#fff;z-index:2;';
-    const stickyCornerCss = 'position:sticky;left:0;top:0;background:#fff;z-index:4;';
+    const stickyHeadCss = 'position:sticky;top:0;background:#fff;color:#1f2937;z-index:3;';
+    const stickyFirstCss = 'position:sticky;left:0;background:#fff;color:#1f2937;z-index:2;';
+    const stickyCornerCss = 'position:sticky;left:0;top:0;background:#fff;color:#1f2937;z-index:4;';
     const colSpan = compact ? 1 : 4;
 
     const headRow1 = `
@@ -2679,7 +2671,7 @@ async function renderRefund() {
     </tr>`).join('') || `<tr><td colspan="${secondary ? 4 : 3}" class="muted" style="padding:24px;text-align:center;">Tidak ada refund untuk periode ini.</td></tr>`;
 
     wrap.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);">
+      <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:520px;">
         <div class="kpi-card kpi-primary"><div class="kpi-label">Refund Value</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(summary.refund_value || 0)}</span></span><div class="kpi-sub">${fmtRp(summary.refund_value || 0)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Refund Qty</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.refund_qty || 0)}</span></span><div class="kpi-sub">pairs</div></div>
       </div>

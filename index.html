@@ -1029,7 +1029,8 @@ async function loadChannel(channel, from, to, opts = {}) {
   // Array filters — append each value as a repeated param
   const arrKeys = ['area','store','gender','series','tier','sku'];
   arrKeys.forEach(k => {
-    const v = state[k];
+    let v = state[k];
+    if (k === 'area' && Array.isArray(v)) v = expandSelectedAreas(v);
     if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
     else if (v) qs.append(k, v);
   });
@@ -1184,7 +1185,7 @@ async function loadReferenceOptions() {
     channel: state.channel, from: state.from, to: state.to,
     sku_only: String(sandalOnly),
   });
-  const sortedAreas = [...(state.area || [])].sort();
+  const sortedAreas = expandSelectedAreas([...(state.area || [])]).sort();
   for (const a of sortedAreas) qs.append('area', a);
   const url = '/api/sales/filter-options?' + qs.toString();
   const cacheKey = url;
@@ -1245,6 +1246,27 @@ function _areaMatches(storeArea, selectedArea) {
   const sa = String(storeArea).toLowerCase().trim();
   const se = String(selectedArea).toLowerCase().trim();
   return sa === se || sa.startsWith(se + ' ') || se.startsWith(sa + ' ');
+}
+
+// Expand rollup parent areas (e.g., "Bali") ke semua sub-area ("Bali 1","Bali 2","Bali 3")
+// supaya backend yang exact-match `area = value` tetap dapat semua toko.
+// Sumber: _allStoreOptions dari ref-options (setiap toko punya .area sub-spesifik).
+function expandSelectedAreas(selected) {
+  if (!Array.isArray(selected) || !selected.length) return selected;
+  const allSubAreas = new Set(
+    (state._allStoreOptions || [])
+      .map(s => String(s.area || '').trim())
+      .filter(Boolean)
+  );
+  const out = new Set(selected);
+  selected.forEach(sel => {
+    const selN = String(sel).trim().toLowerCase();
+    allSubAreas.forEach(a => {
+      const aN = a.toLowerCase();
+      if (aN !== selN && aN.startsWith(selN + ' ')) out.add(a);
+    });
+  });
+  return Array.from(out);
 }
 
 function applyStoreAreaCascade() {

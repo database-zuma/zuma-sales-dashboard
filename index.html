@@ -2598,10 +2598,10 @@ async function renderTargetMatrix() {
           ${label} (${count})
         </td>
       </tr>`;
-    const trackedHead = tracked.length ? sectionHeader('✅ Tracked — sorted by area', '#ecfdf5', tracked.length) : '';
-    const trackedRowsHtml = tracked.map((s, i) => renderRow(s, i + 1, false)).join('');
+    const trackedHead = '';
+    const trackedRowsHtml = tracked.map((s, i) => renderRow(s, i, false)).join('');
     const untrackedHead = untracked.length ? sectionHeader('⚠️ Untracked — belum ada target', '#f1f5f9', untracked.length) : '';
-    const untrackedRowsHtml = untracked.map((s, i) => renderRow(s, i + 1, true)).join('');
+    const untrackedRowsHtml = untracked.map((s, i) => renderRow(s, i, true)).join('');
     const rowsHtml = trackedHead + trackedRowsHtml + untrackedHead + untrackedRowsHtml;
 
     const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;

@@ -2510,6 +2510,21 @@ async function renderTargetMatrix() {
       if (injected > 0) fuzzyMatchCount++;
     });
 
+    // Enrich area: backend achievement-matrix return area generic ("Bali"),
+    // sementara dashboard endpoint kasih spesifik ("Bali 1"). Override dari byEntity.
+    const entityAreaMap = new Map();
+    ((state.rawData && state.rawData.byEntity) || []).forEach(e => {
+      const k = normalize(e.name);
+      if (!k) return;
+      const a = String(e.area || '').trim();
+      if (a && !entityAreaMap.has(k)) entityAreaMap.set(k, a);
+    });
+    stores.forEach(s => {
+      const k = normalize(s.name);
+      const specific = entityAreaMap.get(k);
+      if (specific) s.area = specific;
+    });
+
     const MONTH_LABEL = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const years = [];
     for (let y = yearStart; y <= yearEnd; y++) years.push(y);

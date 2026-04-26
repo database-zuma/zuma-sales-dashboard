@@ -2630,9 +2630,33 @@ async function renderTarget() {
     const achieved = tracked.filter(r => r.pct >= 100).sort((a,b) => b.pct - a.pct);  // best first on the left
     const notYet   = tracked.filter(r => r.pct < 100 || !r.target).sort((a,b) => a.pct - b.pct);  // worst first so attention naturally falls on stores that need help
 
+    // ===== Forecast/runrate (proyeksi end-of-period berdasar pace harian) =====
+    const _today = new Date();
+    const _fromD = new Date(state.from);
+    const _toD = new Date(state.to);
+    const _dayMs = 86400000;
+    const _totalDays = Math.max(1, Math.round((_toD - _fromD) / _dayMs) + 1);
+    const _now = _today < _toD ? _today : _toD;
+    const _elapsedDays = Math.max(1, Math.min(_totalDays, Math.round((_now - _fromD) / _dayMs) + 1));
+    const _isOngoing = _today < _toD;
+    const computeForecast = (r) => {
+      if (!r.target || !_isOngoing) return { forecast: r.actualRev, fcPct: r.target ? (r.actualRev / r.target * 100) : 0, ongoing: false };
+      const pace = r.actualRev / _elapsedDays;
+      const forecast = pace * _totalDays;
+      return { forecast, fcPct: forecast / r.target * 100, ongoing: true };
+    };
+
     const renderAchvRow = (r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
       const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
+      const { forecast, fcPct, ongoing } = computeForecast(r);
+      const fcColor = !r.target ? '#94a3b8' : fcPct >= 100 ? '#16a34a' : fcPct >= 80 ? '#f59e0b' : '#dc2626';
+      const fcCell = !r.target ? '<td class="right muted">—</td><td class="center muted">—</td>' :
+        ongoing
+          ? `<td class="right" title="Proyeksi akhir periode (pace × hari)">${fmtRpShort(forecast)}</td>
+             <td class="center" style="color:${fcColor};font-weight:700;" title="Day ${_elapsedDays}/${_totalDays}">${fcPct.toFixed(0)}%</td>`
+          : `<td class="right muted" title="Periode sudah selesai — sama dgn actual">${fmtRpShort(forecast)}</td>
+             <td class="center muted">${fcPct.toFixed(0)}%</td>`;
       return `<tr style="background:${bg};">
         <td class="center muted">${i+1}</td>
         <td class="strong">${escapeHtml(titleCaseEntity(String(r.storeName)))}</td>
@@ -2641,6 +2665,7 @@ async function renderTarget() {
         <td class="right strong">${fmtRpShort(r.actualRev)}</td>
         <td class="right">${fmtNum(r.actualQty)}</td>
         <td class="right" style="color:${color};font-weight:700;">${r.target ? r.pct.toFixed(1)+'%' : '—'}</td>
+        ${fcCell}
       </tr>`;
     };
 
@@ -2669,8 +2694,10 @@ async function renderTarget() {
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
               <th class="right">Achv</th>
+              <th class="right" title="Proyeksi end-of-period berdasar pace harian">🔮 Forecast</th>
+              <th class="center" title="Projected % vs target di akhir periode">Proj %</th>
             </tr></thead>
-            <tbody>${rows || `<tr><td colspan="7" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="9" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
           </table>
         </div>
       </div>`;

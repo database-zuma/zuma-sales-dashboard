@@ -2116,17 +2116,50 @@ function renderPromo(data) {
   const rpTxn = Number(p.realPromoTxn) || 0;
   const rpOutlets = Number(p.realPromoOutlets) || 0;
 
+  // ── Client-side exclude diskon karyawan (per memory feedback_promo_diskon_karyawan.md).
+  // Karyawan campaigns: name match /karyawan/i (e.g. "DISC KARYAWAN 30%",
+  // "NILUHNOVITAFLORRIDISCKARYAWAN30"). Server still returns them in byPromoCampaign;
+  // we drop them from the table + subtract their totals from real-promo & total-diskon KPIs.
+  // byPromoOutlet/SPG/SKU/etc. are server-aggregated WITHOUT campaign keys, so we can't
+  // accurately subtract karyawan from those — flagged in the UI.
+  const _isKaryawanCampaign = (name) => /karyawan/i.test(String(name || ''));
+  const allCampaigns = Array.isArray(data.byPromoCampaign) ? data.byPromoCampaign : [];
+  const karyawanCamps = allCampaigns.filter(c => _isKaryawanCampaign(c.name));
+  const kRev = karyawanCamps.reduce((a, c) => a + (Number(c.revenue) || 0), 0);
+  const kDisc = karyawanCamps.reduce((a, c) => a + (Number(c.discount) || 0), 0);
+  const kGross = kRev + kDisc; // per-row gross absent → estimate from rev+disc
+  // Replace data with a shallow clone whose byPromoCampaign excludes karyawan,
+  // so renderDim (closure) sees the filtered list without mutating the cache.
+  data = Object.assign({}, data, {
+    byPromoCampaign: allCampaigns.filter(c => !_isKaryawanCampaign(c.name)),
+  });
+
+  const rpRevClean = Math.max(0, rpRev - kRev);
+  const rpDiscClean = Math.max(0, rpDisc - kDisc);
+  const rpGrossClean = Math.max(0, rpGross - kGross);
+  const totalDiscClean = Math.max(0, totalDisc - kDisc);
+  const hasKaryawan = karyawanCamps.length > 0;
+  const exNote = hasKaryawan ? ' · excl. karyawan' : '';
+
   const el = (id) => document.getElementById(id);
-  el('promoKpiRpRev').textContent = fmtRpShort(rpRev);
-  el('promoKpiRpShare').textContent = totalRev ? `${(rpRev/totalRev*100).toFixed(2)}% dari Rp${fmtRpShort(totalRev).replace('Rp ','')}` : '—';
-  el('promoKpiRpDisc').textContent = fmtRpShort(rpDisc);
-  el('promoKpiRpDiscPct').textContent = rpGross ? `${(rpDisc/rpGross*100).toFixed(1)}% dari gross real promo` : '—';
+  el('promoKpiRpRev').textContent = fmtRpShort(rpRevClean);
+  el('promoKpiRpShare').textContent = totalRev
+    ? `${(rpRevClean/totalRev*100).toFixed(2)}% dari Rp${fmtRpShort(totalRev).replace('Rp ','')}${exNote}`
+    : '—';
+  el('promoKpiRpDisc').textContent = fmtRpShort(rpDiscClean);
+  el('promoKpiRpDiscPct').textContent = rpGrossClean
+    ? `${(rpDiscClean/rpGrossClean*100).toFixed(1)}% dari gross real promo${exNote}`
+    : '—';
   el('promoKpiTxn').textContent = rpTxn ? fmtNum(rpTxn) : '—';
-  el('promoKpiTxnRate').textContent = txnTotal ? `${(rpTxn/txnTotal*100).toFixed(1)}% dari ${fmtNum(txnTotal)} txn` : '—';
+  el('promoKpiTxnRate').textContent = txnTotal
+    ? `${(rpTxn/txnTotal*100).toFixed(1)}% dari ${fmtNum(txnTotal)} txn${hasKaryawan ? ' · incl. karyawan*' : ''}`
+    : '—';
   el('promoKpiOutlets').textContent = fmtNum(rpOutlets);
-  el('promoKpiOutletsSub').textContent = outletsTotal ? `dari ${fmtNum(outletsTotal)} outlet` : '';
-  el('promoKpiDisc').textContent = fmtRpShort(totalDisc);
-  el('promoKpiPct').textContent = `incl. harga coret · ${totalGross ? (totalDisc/totalGross*100).toFixed(2) : '—'}% dari gross`;
+  el('promoKpiOutletsSub').textContent = outletsTotal
+    ? `dari ${fmtNum(outletsTotal)} outlet${hasKaryawan ? ' · incl. karyawan*' : ''}`
+    : '';
+  el('promoKpiDisc').textContent = fmtRpShort(totalDiscClean);
+  el('promoKpiPct').textContent = `incl. harga coret${exNote} · ${totalGross ? (totalDiscClean/totalGross*100).toFixed(2) : '—'}% dari gross`;
   el('promoKpiAvg').textContent = p.avgDiscountPerPromoRow ? fmtRpShort(p.avgDiscountPerPromoRow) : '—';
 
   const renderDim = (dimKey) => {
@@ -2266,7 +2299,12 @@ function renderPromo(data) {
   const titleEl = document.getElementById('promoDimTitle');
   const hintEl = document.getElementById('promoDimHint');
   if (titleEl) titleEl.textContent = isToko ? `Campaign Detail · ${titleCaseEntity(state.store[0])}` : 'Promo per Toko';
-  if (hintEl) hintEl.textContent = isToko ? 'tampil campaign yg ada di toko ini' : 'klik baris untuk breakdown campaign per toko';
+  if (hintEl) {
+    const karyawanHint = hasKaryawan
+      ? (isToko ? ' · diskon karyawan sudah di-exclude' : ' · ⚠️ angka per-toko masih termasuk diskon karyawan (server agg)')
+      : '';
+    hintEl.textContent = (isToko ? 'tampil campaign yg ada di toko ini' : 'klik baris untuk breakdown campaign per toko') + karyawanHint;
+  }
   const backBtn = document.getElementById('promoBackBtn');
   if (backBtn) {
     backBtn.style.display = isToko ? '' : 'none';
@@ -2280,8 +2318,12 @@ function renderPromo(data) {
 
   // Anomaly: SKU with avg discount > 25%
   const anomalies = (data.byPromoSku || []).filter(s => (s.discount_pct||0) > 25).slice(0, 10);
+  const karyawanCaveat = hasKaryawan
+    ? '<div style="font-size:10px;color:#f59e0b;margin-bottom:6px;">⚠️ Diskon karyawan masih ikut ke-aggregate di SKU view (server-side). Cek tab Campaign untuk angka bersih.</div>'
+    : '';
   if (anomalies.length) {
     document.getElementById('promoAnomalies').innerHTML = `
+      ${karyawanCaveat}
       <div style="font-size:11px;margin-bottom:8px;color:#dc2626;font-weight:600;">${anomalies.length} SKU dengan diskon rata-rata > 25%:</div>
       <table class="data">
         <thead><tr><th>SKU</th><th>Nama</th><th class="right">Diskon Rp</th><th class="right">% Diskon</th><th class="right">Rows</th></tr></thead>

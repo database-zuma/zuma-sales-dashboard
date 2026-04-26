@@ -2271,15 +2271,41 @@ async function renderGrowth() {
   const wrap = document.getElementById('growthContent');
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat growth (fetch 2 periode)…</div>';
   try {
-    const curData = state.rawData || {};
     const isYoy = state.growthMode !== 'mom';
-    const prevFrom = isYoy ? _shiftDateYear(state.from, -1) : _shiftDateMonth(state.from, -1);
-    const prevTo = isYoy ? _shiftDateYear(state.to, -1) : _shiftDateMonth(state.to, -1);
-    // Parallel fetch pakai group beda biar gak saling abort (semuanya di group 'dashboard'
-    // bakal SUPERSEDED satu sama lain karena fetchAPI group-abort).
+    // Determine cur & prev periods.
+    // YoY: cur = state.from-state.to (user filter), prev = -1 year
+    // MoM: cur = 1st of current month → today, prev = 1st of prev month → same day-of-month (smart, ignore user filter)
+    let curFrom, curTo, prevFrom, prevTo, curData;
+    if (isYoy) {
+      curFrom = state.from;
+      curTo = state.to;
+      prevFrom = _shiftDateYear(state.from, -1);
+      prevTo = _shiftDateYear(state.to, -1);
+      curData = state.rawData || {};
+    } else {
+      // MoM smart auto-detect
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = today.getMonth(); // 0-11
+      const dd = today.getDate();
+      const pad = (n) => String(n).padStart(2, '0');
+      curFrom = `${yyyy}-${pad(mm + 1)}-01`;
+      curTo = `${yyyy}-${pad(mm + 1)}-${pad(dd)}`;
+      const prevMonth = new Date(yyyy, mm - 1, 1);
+      const prevYyyy = prevMonth.getFullYear();
+      const prevMm = prevMonth.getMonth();
+      // Last day of prev month — clamp dd kalau prev month gak punya tanggal segitu (e.g., 31 Jan vs 28 Feb)
+      const prevLastDay = new Date(prevYyyy, prevMm + 1, 0).getDate();
+      const prevDd = Math.min(dd, prevLastDay);
+      prevFrom = `${prevYyyy}-${pad(prevMm + 1)}-01`;
+      prevTo = `${prevYyyy}-${pad(prevMm + 1)}-${pad(prevDd)}`;
+      // Fetch cur period juga (tidak reuse state.rawData karena range beda)
+      curData = await loadChannel(state.channel, curFrom, curTo, { group: 'growth-cur-mom' });
+    }
+    // Parallel fetch prev period + wholesale (tiap mode group beda biar cache valid)
     const [prevData, wholesaleCur, wholesalePrev] = await Promise.all([
       loadChannel(state.channel, prevFrom, prevTo, { group: 'growth-prev' }),
-      loadChannel('wholesale', state.from, state.to, { group: 'growth-ws-cur' }).catch(() => ({ byEntity: [] })),
+      loadChannel('wholesale', curFrom, curTo, { group: 'growth-ws-cur' }).catch(() => ({ byEntity: [] })),
       loadChannel('wholesale', prevFrom, prevTo, { group: 'growth-ws-prev' }).catch(() => ({ byEntity: [] })),
     ]);
     // Bangun map nama → wholesale revenue (accumulated cur + prev).
@@ -2301,8 +2327,12 @@ async function renderGrowth() {
       const dt = new Date(d);
       return isNaN(dt) ? d : dt.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
     };
-    const periodLabel = `${fmtMonth(state.from)} – ${fmtMonth(state.to)}`;
-    const prevLabel   = `${fmtMonth(prevFrom)} – ${fmtMonth(prevTo)}`;
+    const fmtDay = (d) => {
+      const dt = new Date(d);
+      return isNaN(dt) ? d : dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+    const periodLabel = isYoy ? `${fmtMonth(curFrom)} – ${fmtMonth(curTo)}` : `${fmtDay(curFrom)} – ${fmtDay(curTo)}`;
+    const prevLabel   = isYoy ? `${fmtMonth(prevFrom)} – ${fmtMonth(prevTo)}` : `${fmtDay(prevFrom)} – ${fmtDay(prevTo)}`;
 
     const curKpi = (curData && curData.kpis) || {};
     const prevKpi = (prevData && prevData.kpis) || {};

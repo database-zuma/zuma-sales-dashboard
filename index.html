@@ -2645,9 +2645,19 @@ async function renderTarget() {
     const _eom = new Date(_fromD.getFullYear(), _fromD.getMonth() + 1, 0); // last day of month
     const _forecastEnd = _shouldExtendToEom ? _eom : _toD;
     const _totalDays = Math.max(1, Math.round((_forecastEnd - _fromD) / _dayMs) + 1);
-    // Elapsed days harus pake state.to (data cutoff), bukan today/forecastEnd. Actual revenue
-    // hanya cover sampai state.to, jadi pace harus dihitung dari range data yang valid.
-    const _dataCutoff = _today < _toD ? _today : _toD;
+    // Detect actual data cutoff dari timeSeries — cari tanggal terakhir yg ada revenue > 0.
+    // Penting biar pace ga di-divide hari kosong (weekend gap, POS belum sync, dll).
+    let _lastDataDate = null;
+    const _ts = (state.rawData && state.rawData.timeSeries) || [];
+    for (const t of _ts) {
+      if ((Number(t.revenue) || 0) > 0 && t.date) {
+        const d = new Date(String(t.date).slice(0, 10));
+        if (!_lastDataDate || d > _lastDataDate) _lastDataDate = d;
+      }
+    }
+    // Cutoff = last data date kalau ada, fallback ke min(today, state.to)
+    const _stateToCutoff = _today < _toD ? _today : _toD;
+    const _dataCutoff = _lastDataDate && _lastDataDate < _stateToCutoff ? _lastDataDate : _stateToCutoff;
     const _elapsedDays = Math.max(1, Math.min(_totalDays, Math.round((_dataCutoff - _fromD) / _dayMs) + 1));
     const _isOngoing = _dataCutoff < _forecastEnd;
     const computeForecast = (r) => {

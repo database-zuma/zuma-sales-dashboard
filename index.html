@@ -2250,22 +2250,31 @@ function renderPromo(data) {
 }
 
 // ============ GROWTH (YoY) ============
-// Bandingin periode sekarang vs periode yang sama tahun lalu — by store, gender, series.
-// Pakai loadChannel dengan date range tahun-1 (cache by URL params sudah otomatis bedain).
+// Bandingin periode sekarang vs periode pembanding (YoY = tahun lalu, MoM = bulan lalu).
 function _shiftDateYear(dateStr, delta) {
   const d = new Date(dateStr);
   if (isNaN(d)) return dateStr;
   d.setFullYear(d.getFullYear() + delta);
   return d.toISOString().slice(0, 10);
 }
+function _shiftDateMonth(dateStr, delta) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  d.setMonth(d.getMonth() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+// Mode default = 'yoy'. Toggle disimpan di state biar persist saat refresh.
+if (!state.growthMode) state.growthMode = 'yoy';
 
 async function renderGrowth() {
   const wrap = document.getElementById('growthContent');
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat growth (fetch 2 periode)…</div>';
   try {
     const curData = state.rawData || {};
-    const prevFrom = _shiftDateYear(state.from, -1);
-    const prevTo = _shiftDateYear(state.to, -1);
+    const isYoy = state.growthMode !== 'mom';
+    const prevFrom = isYoy ? _shiftDateYear(state.from, -1) : _shiftDateMonth(state.from, -1);
+    const prevTo = isYoy ? _shiftDateYear(state.to, -1) : _shiftDateMonth(state.to, -1);
     // Parallel fetch pakai group beda biar gak saling abort (semuanya di group 'dashboard'
     // bakal SUPERSEDED satu sama lain karena fetchAPI group-abort).
     const [prevData, wholesaleCur, wholesalePrev] = await Promise.all([
@@ -2405,9 +2414,18 @@ async function renderGrowth() {
 
     const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
 
+    const modeBtnStyle = (active) => `padding:6px 14px;border:1px solid ${active?'#002A3A':'var(--border)'};background:${active?'#002A3A':'#fff'};color:${active?'#fff':'#475569'};font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;`;
     wrap.innerHTML = `
-      <div style="margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;font-size:12px;color:#475569;">
-        <strong style="color:#002A3A;">Growth YoY</strong> · ${periodLabel} vs ${prevLabel} · Channel: <strong>${state.channel}</strong>
+      <div style="margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;font-size:12px;color:#475569;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <strong style="color:#002A3A;">Growth ${isYoy?'YoY':'MoM'}</strong>
+        <span>·</span>
+        <span>${periodLabel} <strong>vs</strong> ${prevLabel}</span>
+        <span>·</span>
+        <span>Channel: <strong>${state.channel}</strong></span>
+        <span style="margin-left:auto;display:flex;gap:6px;">
+          <button id="gmYoy" style="${modeBtnStyle(isYoy)}">YoY</button>
+          <button id="gmMom" style="${modeBtnStyle(!isYoy)}">MoM</button>
+        </span>
       </div>
       <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:640px;margin-bottom:14px;">
         <div class="kpi-card kpi-primary">
@@ -2429,6 +2447,11 @@ async function renderGrowth() {
     wrap.querySelectorAll('tr[data-drill-store]').forEach(tr => {
       tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
     });
+    // Wire toggle YoY/MoM
+    const yoyBtn = document.getElementById('gmYoy');
+    const momBtn = document.getElementById('gmMom');
+    if (yoyBtn) yoyBtn.onclick = () => { state.growthMode = 'yoy'; renderGrowth(); };
+    if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
   } catch (e) {
     // Filter change bikin fetch terabort — silent skip, next refresh akan re-render.
     if (e && (e.superseded || e.name === 'AbortError' || String(e?.message || '').includes('SUPERSEDED'))) {

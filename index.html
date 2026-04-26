@@ -909,13 +909,25 @@ table.data tfoot td {
 
     <div class="card" style="margin-bottom:12px;">
       <div class="card-header">
-        <div class="card-title">Promo per Toko · Real Promo (exclude harga coret & diskon karyawan)</div>
+        <div class="card-title">Breakdown Promo per Dimensi</div>
+        <select id="promoDimSelect" class="filter-select" style="max-width:200px;">
+          <option value="byPromoCampaign" selected>🎯 Campaign / Nama Promo</option>
+          <option value="byPromoChannel">Channel</option>
+          <option value="byPromoArea">Area</option>
+          <option value="byPromoOutlet">Outlet / Toko</option>
+          <option value="byPromoSpg">SPG</option>
+          <option value="byPromoSku">SKU</option>
+          <option value="byPromoGender">Gender</option>
+          <option value="byPromoSeries">Series</option>
+          <option value="byPromoTier">Tier</option>
+          <option value="byPromoVersion">Version</option>
+        </select>
       </div>
-      <div class="table-wrap" style="max-height:600px;overflow:auto;">
+      <div class="table-wrap" style="max-height:500px;overflow:auto;">
         <table class="data">
-          <thead><tr id="promoTokoHead"></tr></thead>
-          <tbody id="promoTokoBody"><tr><td colspan="7" class="loading">—</td></tr></tbody>
-          <tfoot id="promoTokoFoot"></tfoot>
+          <thead><tr id="promoDimHead"></tr></thead>
+          <tbody id="promoDimBody"><tr><td colspan="7" class="loading">—</td></tr></tbody>
+          <tfoot id="promoDimFoot"></tfoot>
         </table>
       </div>
     </div>
@@ -2238,59 +2250,9 @@ function renderPromo(data) {
     </tr>`;
   };
 
-  // Render Promo per Toko (real promo per outlet vs total revenue toko)
-  const renderPromoToko = () => {
-    const promoOutlets = data.byPromoOutlet || [];
-    const allEntities = data.byEntity || [];
-    const entityRevByName = new Map();
-    allEntities.forEach(e => {
-      const k = String(e.name || '').toLowerCase().trim();
-      if (k) entityRevByName.set(k, Number(e.revenue) || 0);
-    });
-    // Filter only stores with real promo > 0
-    const rows = promoOutlets.map(p => {
-      const promoRev = Number(p.revenue) || 0;
-      const promoDisc = Number(p.discount) || 0;
-      const totRev = entityRevByName.get(String(p.name || '').toLowerCase().trim()) || promoRev;
-      return {
-        name: p.name,
-        area: p.area || '-',
-        channel: String(p.channel || '-').toUpperCase(),
-        promoRev, promoDisc,
-        totRev,
-        sharePct: totRev > 0 ? (promoRev / totRev * 100) : 0,
-      };
-    }).filter(r => r.promoRev > 0);
-    rows.sort((a, b) => b.sharePct - a.sharePct);
-    document.getElementById('promoTokoHead').innerHTML = `
-      <th class="center" style="width:36px;">#</th>
-      <th>Toko</th>
-      <th>Area</th>
-      <th>Channel</th>
-      <th class="right">Real Promo Rev</th>
-      <th class="right">Total Rev Toko</th>
-      <th class="right">% Promo</th>`;
-    document.getElementById('promoTokoBody').innerHTML = rows.length
-      ? rows.map((r, i) => `<tr>
-          <td class="center muted">${i+1}</td>
-          <td class="strong">${escapeHtml(titleCaseEntity(r.name||'-'))}</td>
-          <td class="muted">${escapeHtml(r.area)}</td>
-          <td class="muted">${escapeHtml(r.channel)}</td>
-          <td class="right">${fmtRpShort(r.promoRev)}</td>
-          <td class="right muted">${fmtRpShort(r.totRev)}</td>
-          <td class="right strong" style="color:${r.sharePct>30?'#dc2626':r.sharePct>15?'#f59e0b':'#16a34a'};">${r.sharePct.toFixed(1)}%</td>
-        </tr>`).join('')
-      : '<tr><td colspan="7" class="empty" style="padding:24px;text-align:center;">Tidak ada toko dengan real promo di periode ini.</td></tr>';
-    const sumPromoRev = rows.reduce((a,r) => a + r.promoRev, 0);
-    const sumTotRev = rows.reduce((a,r) => a + r.totRev, 0);
-    document.getElementById('promoTokoFoot').innerHTML = rows.length ? `<tr>
-      <td colspan="4" class="center">TOTAL ${rows.length} toko</td>
-      <td class="right">${fmtRpShort(sumPromoRev)}</td>
-      <td class="right">${fmtRpShort(sumTotRev)}</td>
-      <td class="right strong">${sumTotRev>0 ? (sumPromoRev/sumTotRev*100).toFixed(1) : 0}%</td>
-    </tr>` : '';
-  };
-  renderPromoToko();
+  const dimSel = document.getElementById('promoDimSelect');
+  dimSel.onchange = () => renderDim(dimSel.value);
+  renderDim(dimSel.value);
 
   // Anomaly: SKU with avg discount > 25%
   const anomalies = (data.byPromoSku || []).filter(s => (s.discount_pct||0) > 25).slice(0, 10);

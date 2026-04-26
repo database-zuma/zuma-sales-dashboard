@@ -2631,14 +2631,23 @@ async function renderTarget() {
     const notYet   = tracked.filter(r => r.pct < 100 || !r.target).sort((a,b) => a.pct - b.pct);  // worst first so attention naturally falls on stores that need help
 
     // ===== Forecast/runrate (proyeksi end-of-period berdasar pace harian) =====
+    // Smart end detection: kalau state.from = tanggal 1 bulan tertentu DAN state.to masih
+    // di bulan yang sama → auto-extend forecast ke akhir bulan (untuk monthly target tracking).
+    // Selain itu pakai state.to apa adanya.
     const _today = new Date();
     const _fromD = new Date(state.from);
     const _toD = new Date(state.to);
     const _dayMs = 86400000;
-    const _totalDays = Math.max(1, Math.round((_toD - _fromD) / _dayMs) + 1);
-    const _now = _today < _toD ? _today : _toD;
+    const _isFirstOfMonth = _fromD.getDate() === 1;
+    const _sameMonth = _fromD.getFullYear() === _toD.getFullYear() && _fromD.getMonth() === _toD.getMonth();
+    const _shouldExtendToEom = _isFirstOfMonth && _sameMonth;
+    // Effective end date untuk forecast
+    const _eom = new Date(_fromD.getFullYear(), _fromD.getMonth() + 1, 0); // last day of month
+    const _forecastEnd = _shouldExtendToEom ? _eom : _toD;
+    const _totalDays = Math.max(1, Math.round((_forecastEnd - _fromD) / _dayMs) + 1);
+    const _now = _today < _forecastEnd ? _today : _forecastEnd;
     const _elapsedDays = Math.max(1, Math.min(_totalDays, Math.round((_now - _fromD) / _dayMs) + 1));
-    const _isOngoing = _today < _toD;
+    const _isOngoing = _today < _forecastEnd;
     const computeForecast = (r) => {
       if (!r.target || !_isOngoing) return { forecast: r.actualRev, fcPct: r.target ? (r.actualRev / r.target * 100) : 0, ongoing: false };
       const pace = r.actualRev / _elapsedDays;

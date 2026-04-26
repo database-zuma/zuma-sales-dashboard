@@ -2667,17 +2667,20 @@ async function renderTarget() {
       return { forecast, fcPct: forecast / r.target * 100, ongoing: true };
     };
 
+    // Show Forecast/Proj columns hanya kalau periode lagi berjalan (forecast useful)
+    const _showForecast = _isOngoing;
+
     const renderAchvRow = (r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
       const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
-      const { forecast, fcPct, ongoing } = computeForecast(r);
-      const fcColor = !r.target ? '#94a3b8' : fcPct >= 100 ? '#16a34a' : fcPct >= 80 ? '#f59e0b' : '#dc2626';
-      const fcCell = !r.target ? '<td class="right muted">—</td><td class="center muted">—</td>' :
-        ongoing
-          ? `<td class="right" title="Proyeksi akhir periode (pace × hari)">${fmtRpShort(forecast)}</td>
-             <td class="center" style="color:${fcColor};font-weight:700;" title="Day ${_elapsedDays}/${_totalDays}">${fcPct.toFixed(0)}%</td>`
-          : `<td class="right muted" title="Periode sudah selesai — gak perlu forecast">—</td>
-             <td class="center muted" title="Periode sudah selesai">—</td>`;
+      let fcCell = '';
+      if (_showForecast) {
+        const { forecast, fcPct } = computeForecast(r);
+        const fcColor = !r.target ? '#94a3b8' : fcPct >= 100 ? '#16a34a' : fcPct >= 80 ? '#f59e0b' : '#dc2626';
+        fcCell = !r.target ? '<td class="right muted">—</td><td class="center muted">—</td>'
+          : `<td class="right" title="Proyeksi akhir periode (pace × hari)">${fmtRpShort(forecast)}</td>
+             <td class="center" style="color:${fcColor};font-weight:700;" title="Day ${_elapsedDays}/${_totalDays}">${fcPct.toFixed(0)}%</td>`;
+      }
       return `<tr style="background:${bg};">
         <td class="center muted">${i+1}</td>
         <td class="strong">${escapeHtml(titleCaseEntity(String(r.storeName)))}</td>
@@ -2715,10 +2718,9 @@ async function renderTarget() {
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
               <th class="right">Achv</th>
-              <th class="right" title="Proyeksi end-of-period berdasar pace harian">🔮 Forecast</th>
-              <th class="center" title="Projected % vs target di akhir periode">Proj %</th>
+              ${_showForecast ? '<th class="right" title="Proyeksi end-of-period berdasar pace harian">🔮 Forecast</th><th class="center" title="Projected % vs target di akhir periode">Proj %</th>' : ''}
             </tr></thead>
-            <tbody>${rows || `<tr><td colspan="9" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="${_showForecast ? 9 : 7}" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
           </table>
         </div>
       </div>`;

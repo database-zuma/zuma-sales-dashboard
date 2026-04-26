@@ -622,7 +622,6 @@ table.data tfoot td {
     <button class="tab-btn" data-tab="target">Target</button>
     <button class="tab-btn" data-tab="refund">Refund</button>
     <button class="tab-btn" data-tab="promo">Promo</button>
-    <button class="tab-btn" data-tab="stockalert">🚨 Stock Alert</button>
   </nav>
 
   <!-- GLOBAL ERROR -->
@@ -919,11 +918,6 @@ table.data tfoot td {
   <!-- ========= TAB: GROWTH (YoY) ========= -->
   <section class="tab-content" id="tab-growth">
     <div id="growthContent"><div class="loading"><div class="spinner"></div>Memuat growth…</div></div>
-  </section>
-
-  <!-- ========= TAB: STOCK ALERT (top SKU OOS at stores) ========= -->
-  <section class="tab-content" id="tab-stockalert">
-    <div id="stockAlertContent"><div class="loading"><div class="spinner"></div>Memuat stock alert…</div></div>
   </section>
 
   <!-- FOOTER -->
@@ -2498,108 +2492,6 @@ async function renderGrowth() {
   }
 }
 
-// ============ STOCK ALERT (top SKU OOS at stores) ============
-// Cross-link: ambil top selling SKU dari sales (rankByKodeKecil), cek di /api/stock
-// toko mana yang stoknya 0. Surface "popular SKU missing at store" buat restocking.
-async function renderStockAlert() {
-  const wrap = document.getElementById('stockAlertContent');
-  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat stock alert (fetching stock data)…</div>';
-  try {
-    const top = ((state.rawData && state.rawData.rankByKodeKecil) || []).slice(0, 30);
-    if (!top.length) {
-      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Top SKU belum ke-load. Pilih channel + tunggu data ready.</div>';
-      return;
-    }
-    // Fetch stock dari VPS (paralel via fetchAPI, no group conflict)
-    const stockData = await fetchAPI('/api/stock', { group: 'stock-alert' });
-    // Gabungin retail dari semua entity (DDD/LJBB/MBB/UBB)
-    const stockByKodeKecil = new Map(); // kode_kecil → array of {sku, name, store_stock, total}
-    Object.values(stockData || {}).forEach(ent => {
-      if (!ent || typeof ent !== 'object') return;
-      (ent.retail || []).forEach(s => {
-        const kk = String(s.kode_kecil || '').toLowerCase();
-        if (!kk) return;
-        if (!stockByKodeKecil.has(kk)) stockByKodeKecil.set(kk, []);
-        stockByKodeKecil.get(kk).push(s);
-      });
-    });
-
-    // Build alert rows: untuk tiap top SKU, list toko yg stoknya 0 (semua size aggregated)
-    const rows = [];
-    top.forEach(t => {
-      const kk = String(t.kode_kecil || '').toLowerCase();
-      if (!kk) return;
-      const sizes = stockByKodeKecil.get(kk) || [];
-      if (!sizes.length) return;
-      // Aggregate stock per toko across all sizes
-      const tokoStock = new Map();
-      sizes.forEach(s => {
-        Object.entries(s.store_stock || {}).forEach(([toko, qty]) => {
-          tokoStock.set(toko, (tokoStock.get(toko) || 0) + (Number(qty) || 0));
-        });
-      });
-      const oosTokos = Array.from(tokoStock.entries()).filter(([_, q]) => q === 0).map(([t]) => t).sort();
-      const totalStock = Array.from(tokoStock.values()).reduce((a, b) => a + b, 0);
-      if (oosTokos.length === 0) return; // semua toko ada stok, gak alert
-      rows.push({
-        kode_kecil: t.kode_kecil,
-        name: sizes[0]?.name || t.product_name || '-',
-        sales_pairs: Number(t.pairs) || 0,
-        total_stock_other: totalStock,
-        oos_count: oosTokos.length,
-        oos_tokos: oosTokos,
-      });
-    });
-
-    rows.sort((a, b) => b.sales_pairs - a.sales_pairs);
-
-    if (!rows.length) {
-      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">✅ Semua top SKU ada stok di setiap toko retail. No alert!</div>';
-      return;
-    }
-
-    wrap.innerHTML = `
-      <div style="margin-bottom:12px;padding:10px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;font-size:12px;color:#92400e;">
-        🚨 <strong>Stock Alert</strong> — ${rows.length} top SKU laris yang stoknya <strong>0</strong> di beberapa toko retail. Action: prioritize restocking ke toko yg listed.
-      </div>
-      <div class="card">
-        <div class="card-header"><div class="card-title">Top Selling SKU × Out-of-Stock Stores</div></div>
-        <div class="table-wrap" style="max-height:600px;overflow:auto;">
-          <table class="data">
-            <thead><tr>
-              <th class="center" style="width:36px;">#</th>
-              <th>Kode Kecil</th>
-              <th>Nama Produk</th>
-              <th class="right">Pairs Sold (current)</th>
-              <th class="right">Stock Lain</th>
-              <th class="center">OOS Stores</th>
-              <th>Toko OOS</th>
-            </tr></thead>
-            <tbody>
-              ${rows.map((r, i) => `<tr>
-                <td class="center muted">${i+1}</td>
-                <td class="strong">${escapeHtml(r.kode_kecil)}</td>
-                <td>${escapeHtml(r.name)}</td>
-                <td class="right strong">${fmtNum(r.sales_pairs)}</td>
-                <td class="right muted">${fmtNum(r.total_stock_other)} pcs</td>
-                <td class="center" style="color:#dc2626;font-weight:700;">${r.oos_count}</td>
-                <td style="font-size:10px;">${r.oos_tokos.map(t => escapeHtml(titleCaseEntity(t))).join(', ')}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div style="padding:8px 12px;font-size:10px;color:#94a3b8;">
-          Source: top SKU dari sales periode aktif × stock snapshot terkini dari /api/stock (semua entity DDD/LJBB/MBB/UBB digabung).
-        </div>
-      </div>
-    `;
-  } catch (e) {
-    if (e && (e.superseded || /supersed/i.test(String(e?.message || '')))) return;
-    console.error('renderStockAlert', e);
-    wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat stock alert: ${escapeHtml(e.message || String(e))}</div>`;
-  }
-}
-
 // ============ TARGET (lazy fetch) ============
 // Area-level rollup targets — these are aggregate region targets in the Google Sheet,
 // not actual stores. Skip them so they don't show as fake rows or get duplicated across
@@ -3645,7 +3537,6 @@ function renderActiveTab(data) {
     }
     else if (tab === 'refund') renderRefund();   // lazy fetch
     else if (tab === 'growth') renderGrowth();   // lazy fetch (2 periods)
-    else if (tab === 'stockalert') renderStockAlert();   // lazy fetch (stock API)
   } catch (e) { console.error('renderActiveTab', tab, e); }
 }
 

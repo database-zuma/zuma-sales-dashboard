@@ -933,10 +933,10 @@ table.data tfoot td {
       <div class="card-header">
         <div class="card-title">Breakdown Promo per Dimensi</div>
         <select id="promoDimSelect" class="filter-select" style="max-width:200px;">
-          <option value="byPromoCampaign" selected>🎯 Campaign / Nama Promo</option>
+          <option value="byPromoOutlet" selected>Outlet / Toko</option>
+          <option value="byPromoCampaign">🎯 Campaign / Nama Promo</option>
           <option value="byPromoChannel">Channel</option>
           <option value="byPromoArea">Area</option>
-          <option value="byPromoOutlet">Outlet / Toko</option>
           <option value="byPromoSpg">SPG</option>
           <option value="byPromoSku">SKU</option>
           <option value="byPromoGender">Gender</option>
@@ -2238,7 +2238,9 @@ function renderPromo(data) {
         : [];
       const nameCell = `<td class="strong">${escapeHtml(String(r.name || '-'))}</td>`;
       const extraHtml = extraCells.map(c => `<td class="muted">${escapeHtml(String(c))}</td>`).join('');
-      return `<tr>
+      const isOutletDrill = dimKey === 'byPromoOutlet';
+      const trAttr = isOutletDrill ? `style="cursor:pointer;" data-promo-drill-toko="${escapeHtml(String(r.name||''))}" title="Klik buat liat campaign apa aja di toko ini"` : '';
+      return `<tr ${trAttr}>
         <td class="center muted">${i+1}</td>
         ${nameCell}
         ${extraHtml}
@@ -2249,6 +2251,19 @@ function renderPromo(data) {
       </tr>`;
     }).join('');
     document.getElementById('promoDimBody').innerHTML = rowsHtml;
+    // Wire klik baris di Outlet view → drill ke campaign view (set state.store, switch dropdown)
+    document.querySelectorAll('#promoDimBody tr[data-promo-drill-toko]').forEach(tr => {
+      tr.onclick = () => {
+        const toko = tr.getAttribute('data-promo-drill-toko');
+        if (!toko) return;
+        state.store = [toko];
+        state.page = 1;
+        if (window._msx && window._msx.store) window._msx.store.setSelected([toko]);
+        const sel = document.getElementById('promoDimSelect');
+        if (sel) sel.value = 'byPromoCampaign';
+        refresh({ reloadData: true });
+      };
+    });
 
     const totRev = items.reduce((a,c) => a + (Number(c.revenue)||0), 0);
     const totDisc = items.reduce((a,c) => a + (Number(c.discount)||0), 0);

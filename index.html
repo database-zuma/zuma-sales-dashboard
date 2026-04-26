@@ -914,7 +914,8 @@ table.data tfoot td {
     </div>
 
     <div class="card" style="margin-bottom:12px;">
-      <div class="card-header">
+      <div class="card-header" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button id="promoBackBtn" class="btn-ghost" style="display:none;font-size:11px;">← Back ke list toko</button>
         <div class="card-title" id="promoDimTitle">Promo per Toko</div>
         <span class="muted" style="font-size:10px;" id="promoDimHint">klik baris untuk breakdown campaign per toko</span>
       </div>
@@ -2264,7 +2265,16 @@ function renderPromo(data) {
   const titleEl = document.getElementById('promoDimTitle');
   const hintEl = document.getElementById('promoDimHint');
   if (titleEl) titleEl.textContent = isToko ? `Campaign Detail · ${titleCaseEntity(state.store[0])}` : 'Promo per Toko';
-  if (hintEl) hintEl.textContent = isToko ? '← klik tombol Reset di toolbar atas buat balik ke list toko' : 'klik baris untuk breakdown campaign per toko';
+  if (hintEl) hintEl.textContent = isToko ? 'tampil campaign yg ada di toko ini' : 'klik baris untuk breakdown campaign per toko';
+  const backBtn = document.getElementById('promoBackBtn');
+  if (backBtn) {
+    backBtn.style.display = isToko ? '' : 'none';
+    backBtn.onclick = () => {
+      state.store = [];
+      if (window._msx && window._msx.store) window._msx.store.setSelected([]);
+      refresh({ reloadData: true });
+    };
+  }
   renderDim(dimKeyAuto);
 
   // Anomaly: SKU with avg discount > 25%

@@ -10,28 +10,12 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://srv1346756.hstgr.cloud" crossorigin>
 <link rel="dns-prefetch" href="https://srv1346756.hstgr.cloud">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js';"></script>
 <script>
-// Chart.js loader with CDN fallback. Coba jsdelivr → unpkg → cdnjs.
-(function loadChartJs() {
-  var sources = [
-    'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-    'https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
-  ];
-  var i = 0;
-  function tryNext() {
-    if (i >= sources.length) {
-      console.error('All Chart.js CDN failed — charts will not render');
-      return;
-    }
-    var s = document.createElement('script');
-    s.src = sources[i++];
-    s.async = false;
-    s.onerror = tryNext;
-    document.head.appendChild(s);
-  }
-  tryNext();
-})();
+// Fallback ke cdnjs kalau dua di atas gagal — sync load via inline check.
+if (typeof Chart === 'undefined') {
+  document.write('<scr' + 'ipt src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></scr' + 'ipt>');
+}
 </script>
 <style>
 :root {

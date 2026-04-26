@@ -2645,9 +2645,11 @@ async function renderTarget() {
     const _eom = new Date(_fromD.getFullYear(), _fromD.getMonth() + 1, 0); // last day of month
     const _forecastEnd = _shouldExtendToEom ? _eom : _toD;
     const _totalDays = Math.max(1, Math.round((_forecastEnd - _fromD) / _dayMs) + 1);
-    const _now = _today < _forecastEnd ? _today : _forecastEnd;
-    const _elapsedDays = Math.max(1, Math.min(_totalDays, Math.round((_now - _fromD) / _dayMs) + 1));
-    const _isOngoing = _today < _forecastEnd;
+    // Elapsed days harus pake state.to (data cutoff), bukan today/forecastEnd. Actual revenue
+    // hanya cover sampai state.to, jadi pace harus dihitung dari range data yang valid.
+    const _dataCutoff = _today < _toD ? _today : _toD;
+    const _elapsedDays = Math.max(1, Math.min(_totalDays, Math.round((_dataCutoff - _fromD) / _dayMs) + 1));
+    const _isOngoing = _dataCutoff < _forecastEnd;
     const computeForecast = (r) => {
       if (!r.target || !_isOngoing) return { forecast: r.actualRev, fcPct: r.target ? (r.actualRev / r.target * 100) : 0, ongoing: false };
       const pace = r.actualRev / _elapsedDays;

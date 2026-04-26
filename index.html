@@ -2510,10 +2510,20 @@ async function renderStockAlert() {
       wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Top SKU belum ke-load. Pilih channel + tunggu data ready.</div>';
       return;
     }
-    // Fetch stock dari VPS (paralel via fetchAPI, no group conflict)
-    const stockData = await fetchAPI('/api/stock', { group: 'stock-alert' });
-    // Gabungin retail dari semua entity (DDD/LJBB/MBB/UBB)
-    const stockByKodeKecil = new Map(); // kode_kecil → array of {sku, name, store_stock, total}
+    // Parallel fetch stock + assortment
+    const [stockData, assortData] = await Promise.all([
+      fetchAPI('/api/stock', { group: 'stock-alert-stock' }),
+      fetchAPI('/api/assortment', { group: 'stock-alert-assort' }).catch(() => ({})),
+    ]);
+    // Assortment: kode → expected size count (parse "3-3-3-3" → 4 segments)
+    const assortmentSizeCount = new Map();
+    Object.entries(assortData || {}).forEach(([kode, val]) => {
+      if (typeof val !== 'string') return;
+      const segments = val.split('-').filter(s => Number(s) > 0);
+      assortmentSizeCount.set(String(kode).toLowerCase(), segments.length);
+    });
+    // Group stock per kode_kecil → array of size records (each w/ store_stock map)
+    const stockByKodeKecil = new Map();
     Object.values(stockData || {}).forEach(ent => {
       if (!ent || typeof ent !== 'object') return;
       (ent.retail || []).forEach(s => {
@@ -2524,56 +2534,68 @@ async function renderStockAlert() {
       });
     });
 
-    // Build alert rows: untuk tiap top SKU, list toko yg stoknya 0 (semua size aggregated)
+    // Build alert rows: tiap top SKU × tiap toko, hitung size_with_stock vs assortment expected
     const rows = [];
     top.forEach(t => {
       const kk = String(t.kode_kecil || '').toLowerCase();
+      const kode = String(t.kode || '').toLowerCase();
       if (!kk) return;
       const sizes = stockByKodeKecil.get(kk) || [];
       if (!sizes.length) return;
-      // Aggregate stock per toko across all sizes
-      const tokoStock = new Map();
+      const expectedSizes = assortmentSizeCount.get(kode) || sizes.length; // fallback ke total size yg ada
+      // Per toko: count berapa size yg actual stoknya > 0
+      const tokoSizeCount = new Map();
       sizes.forEach(s => {
         Object.entries(s.store_stock || {}).forEach(([toko, qty]) => {
-          tokoStock.set(toko, (tokoStock.get(toko) || 0) + (Number(qty) || 0));
+          if (!tokoSizeCount.has(toko)) tokoSizeCount.set(toko, { withStock: 0, total: 0 });
+          const c = tokoSizeCount.get(toko);
+          c.total++;
+          if ((Number(qty) || 0) > 0) c.withStock++;
         });
       });
-      const oosTokos = Array.from(tokoStock.entries()).filter(([_, q]) => q === 0).map(([t]) => t).sort();
-      const totalStock = Array.from(tokoStock.values()).reduce((a, b) => a + b, 0);
-      if (oosTokos.length === 0) return; // semua toko ada stok, gak alert
+      // Alert kalau toko punya size_with_stock < expectedSizes (incomplete vs assortment)
+      const incompleteTokos = [];
+      tokoSizeCount.forEach((c, toko) => {
+        if (c.withStock < expectedSizes) {
+          incompleteTokos.push({ toko, missing: Math.max(0, expectedSizes - c.withStock), withStock: c.withStock });
+        }
+      });
+      if (incompleteTokos.length === 0) return; // semua toko sesuai assortment
+      incompleteTokos.sort((a, b) => b.missing - a.missing);
       rows.push({
         kode_kecil: t.kode_kecil,
         name: sizes[0]?.name || t.product_name || '-',
         sales_pairs: Number(t.pairs) || 0,
-        total_stock_other: totalStock,
-        oos_count: oosTokos.length,
-        oos_tokos: oosTokos,
+        expected: expectedSizes,
+        incomplete_count: incompleteTokos.length,
+        toko_detail: incompleteTokos,
       });
     });
 
     rows.sort((a, b) => b.sales_pairs - a.sales_pairs);
 
     if (!rows.length) {
-      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">✅ Semua top SKU ada stok di setiap toko retail. No alert!</div>';
+      wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">✅ Semua top SKU sesuai assortment di setiap toko retail. No alert!</div>';
       return;
     }
+    rows.sort((a, b) => b.sales_pairs - a.sales_pairs);
 
     wrap.innerHTML = `
       <div style="margin-bottom:12px;padding:10px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;font-size:12px;color:#92400e;">
-        🚨 <strong>Stock Alert</strong> — ${rows.length} top SKU laris yang stoknya <strong>0</strong> di beberapa toko retail. Action: prioritize restocking ke toko yg listed.
+        🚨 <strong>Stock Alert</strong> — ${rows.length} top SKU laris yg <strong>incomplete vs assortment</strong> di beberapa toko. Toko punya size yg ready &lt; assortment expected = lost-sale risk.
       </div>
       <div class="card">
-        <div class="card-header"><div class="card-title">Top Selling SKU × Out-of-Stock Stores</div></div>
+        <div class="card-header"><div class="card-title">Top Selling SKU × Toko Incomplete (size_with_stock &lt; assortment)</div></div>
         <div class="table-wrap" style="max-height:600px;overflow:auto;">
           <table class="data">
             <thead><tr>
               <th class="center" style="width:36px;">#</th>
               <th>Kode Kecil</th>
-              <th>Nama Produk</th>
-              <th class="right">Pairs Sold (current)</th>
-              <th class="right">Stock Lain</th>
-              <th class="center">OOS Stores</th>
-              <th>Toko OOS</th>
+              <th>Nama</th>
+              <th class="right">Pairs Sold</th>
+              <th class="center">Assort Sizes</th>
+              <th class="center">Toko Incomplete</th>
+              <th>Detail (toko: ready/expected)</th>
             </tr></thead>
             <tbody>
               ${rows.map((r, i) => `<tr>
@@ -2581,15 +2603,15 @@ async function renderStockAlert() {
                 <td class="strong">${escapeHtml(r.kode_kecil)}</td>
                 <td>${escapeHtml(r.name)}</td>
                 <td class="right strong">${fmtNum(r.sales_pairs)}</td>
-                <td class="right muted">${fmtNum(r.total_stock_other)} pcs</td>
-                <td class="center" style="color:#dc2626;font-weight:700;">${r.oos_count}</td>
-                <td style="font-size:10px;">${r.oos_tokos.map(t => escapeHtml(titleCaseEntity(t))).join(', ')}</td>
+                <td class="center muted">${r.expected}</td>
+                <td class="center" style="color:#dc2626;font-weight:700;">${r.incomplete_count}</td>
+                <td style="font-size:10px;">${r.toko_detail.slice(0,8).map(d => `${escapeHtml(titleCaseEntity(d.toko))} (${d.withStock}/${r.expected})`).join(', ')}${r.toko_detail.length>8?` +${r.toko_detail.length-8} more`:''}</td>
               </tr>`).join('')}
             </tbody>
           </table>
         </div>
         <div style="padding:8px 12px;font-size:10px;color:#94a3b8;">
-          Source: top SKU dari sales periode aktif × stock snapshot terkini dari /api/stock (semua entity DDD/LJBB/MBB/UBB digabung).
+          Logic: untuk tiap top SKU, count toko yg punya size dgn stok &gt; 0 vs assortment expected (dari /api/assortment). Toko alert kalau ready &lt; expected.
         </div>
       </div>
     `;

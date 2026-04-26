@@ -2676,8 +2676,8 @@ async function renderTarget() {
         ongoing
           ? `<td class="right" title="Proyeksi akhir periode (pace × hari)">${fmtRpShort(forecast)}</td>
              <td class="center" style="color:${fcColor};font-weight:700;" title="Day ${_elapsedDays}/${_totalDays}">${fcPct.toFixed(0)}%</td>`
-          : `<td class="right muted" title="Periode sudah selesai — sama dgn actual">${fmtRpShort(forecast)}</td>
-             <td class="center muted">${fcPct.toFixed(0)}%</td>`;
+          : `<td class="right muted" title="Periode sudah selesai — gak perlu forecast">—</td>
+             <td class="center muted" title="Periode sudah selesai">—</td>`;
       return `<tr style="background:${bg};">
         <td class="center muted">${i+1}</td>
         <td class="strong">${escapeHtml(titleCaseEntity(String(r.storeName)))}</td>

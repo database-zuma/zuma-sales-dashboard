@@ -915,19 +915,8 @@ table.data tfoot td {
 
     <div class="card" style="margin-bottom:12px;">
       <div class="card-header">
-        <div class="card-title">Breakdown Promo per Dimensi</div>
-        <select id="promoDimSelect" class="filter-select" style="max-width:200px;">
-          <option value="byPromoOutlet" selected>Outlet / Toko</option>
-          <option value="byPromoCampaign">🎯 Campaign / Nama Promo</option>
-          <option value="byPromoChannel">Channel</option>
-          <option value="byPromoArea">Area</option>
-          <option value="byPromoSpg">SPG</option>
-          <option value="byPromoSku">SKU</option>
-          <option value="byPromoGender">Gender</option>
-          <option value="byPromoSeries">Series</option>
-          <option value="byPromoTier">Tier</option>
-          <option value="byPromoVersion">Version</option>
-        </select>
+        <div class="card-title" id="promoDimTitle">Promo per Toko</div>
+        <span class="muted" style="font-size:10px;" id="promoDimHint">klik baris untuk breakdown campaign per toko</span>
       </div>
       <div class="table-wrap" style="max-height:500px;overflow:auto;">
         <table class="data">
@@ -2235,7 +2224,7 @@ function renderPromo(data) {
       </tr>`;
     }).join('');
     document.getElementById('promoDimBody').innerHTML = rowsHtml;
-    // Wire klik baris di Outlet view → drill ke campaign view (set state.store, switch dropdown)
+    // Wire klik baris di Outlet view → drill ke campaign view (mode auto-switch via state.store)
     document.querySelectorAll('#promoDimBody tr[data-promo-drill-toko]').forEach(tr => {
       tr.onclick = () => {
         const toko = tr.getAttribute('data-promo-drill-toko');
@@ -2243,8 +2232,6 @@ function renderPromo(data) {
         state.store = [toko];
         state.page = 1;
         if (window._msx && window._msx.store) window._msx.store.setSelected([toko]);
-        const sel = document.getElementById('promoDimSelect');
-        if (sel) sel.value = 'byPromoCampaign';
         refresh({ reloadData: true });
       };
     });
@@ -2271,9 +2258,14 @@ function renderPromo(data) {
     </tr>`;
   };
 
-  const dimSel = document.getElementById('promoDimSelect');
-  dimSel.onchange = () => renderDim(dimSel.value);
-  renderDim(dimSel.value);
+  // Mode auto: kalau state.store filter aktif (1 toko) → campaign view, else → outlet view.
+  const isToko = Array.isArray(state.store) && state.store.length === 1;
+  const dimKeyAuto = isToko ? 'byPromoCampaign' : 'byPromoOutlet';
+  const titleEl = document.getElementById('promoDimTitle');
+  const hintEl = document.getElementById('promoDimHint');
+  if (titleEl) titleEl.textContent = isToko ? `Campaign Detail · ${titleCaseEntity(state.store[0])}` : 'Promo per Toko';
+  if (hintEl) hintEl.textContent = isToko ? '← klik tombol Reset di toolbar atas buat balik ke list toko' : 'klik baris untuk breakdown campaign per toko';
+  renderDim(dimKeyAuto);
 
   // Anomaly: SKU with avg discount > 25%
   const anomalies = (data.byPromoSku || []).filter(s => (s.discount_pct||0) > 25).slice(0, 10);

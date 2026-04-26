@@ -2210,9 +2210,10 @@ function renderPromo(data) {
         : dimKey === 'byPromoSku'
         ? [r.product_name || '-']
         : [];
-      const nameCell = `<td class="strong">${escapeHtml(String(r.name || '-'))}</td>`;
-      const extraHtml = extraCells.map(c => `<td class="muted">${escapeHtml(String(c))}</td>`).join('');
       const isOutletDrill = dimKey === 'byPromoOutlet';
+      const chevron = isOutletDrill ? '<span style="font-size:9px;color:var(--fg-muted);margin-right:6px;">▶</span>' : '';
+      const nameCell = `<td class="strong">${chevron}${escapeHtml(String(r.name || '-'))}</td>`;
+      const extraHtml = extraCells.map(c => `<td class="muted">${escapeHtml(String(c))}</td>`).join('');
       const trAttr = isOutletDrill ? `style="cursor:pointer;" data-promo-drill-toko="${escapeHtml(String(r.name||''))}" title="Klik buat liat campaign apa aja di toko ini"` : '';
       return `<tr ${trAttr}>
         <td class="center muted">${i+1}</td>

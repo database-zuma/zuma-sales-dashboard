@@ -1662,7 +1662,7 @@ function renderOutlet(data) {
     document.getElementById('outletBody').innerHTML = slice.map((r, i) => {
       const pairs = Number(r.pairs)||0, rev = Number(r.revenue)||0, trx = Number(r.transactions)||0;
       const upt = trx ? pairs/trx : 0, asp = pairs ? rev/pairs : 0, atv = trx ? rev/trx : 0;
-      return `<tr>
+      return `<tr style="cursor:pointer;" data-drill-store="${escapeHtml(r.name||'')}" title="Klik buat liat top SKU ${escapeHtml(titleCaseEntity(r.name||''))} di tab Produk">
         <td class="center muted">${(page-1)*size + i + 1}</td>
         <td class="strong">${escapeHtml(titleCaseEntity(r.name||'-'))}</td>
         <td class="muted">${escapeHtml(String(r.area||'-'))}</td>
@@ -1675,6 +1675,10 @@ function renderOutlet(data) {
         <td class="right muted">${trx ? fmtRpExact(atv) : naDash}</td>
       </tr>`;
     }).join('');
+    // Wire drill-down click pada baris toko
+    document.querySelectorAll('#outletBody tr[data-drill-store]').forEach(tr => {
+      tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
+    });
 
     const totUpt = total.trx ? total.pairs/total.trx : 0;
     const totAsp = total.pairs ? total.revenue/total.pairs : 0;
@@ -2361,7 +2365,7 @@ async function renderGrowth() {
       return '';
     };
 
-    const tableHtml = (title, rows, nameLabel) => {
+    const tableHtml = (title, rows, nameLabel, drillable = false) => {
       if (!rows.length) return '';
       return `<div class="card">
         <div class="card-header"><div class="card-title">${title}</div></div>
@@ -2379,7 +2383,9 @@ async function renderGrowth() {
               <th class="center">Tag</th>
             </tr></thead>
             <tbody>
-              ${rows.map((r, i) => `<tr>
+              ${rows.map((r, i) => {
+                const drill = drillable ? `style="cursor:pointer;" data-drill-store="${escapeHtml(r.name||'')}" title="Klik buat liat top SKU di tab Produk"` : '';
+                return `<tr ${drill}>
                 <td class="center muted">${i+1}</td>
                 <td class="strong">${escapeHtml(titleCaseEntity(r.name))}</td>
                 <td class="right muted">${fmtRpShort(r.prevRev)}</td>
@@ -2389,7 +2395,8 @@ async function renderGrowth() {
                 <td class="right strong">${fmtNum(r.curQty)}</td>
                 <td class="center">${pctHtml(r.dQty)}</td>
                 <td class="center">${rowTag(r)}</td>
-              </tr>`).join('')}
+              </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -2414,10 +2421,14 @@ async function renderGrowth() {
           <div class="kpi-sub">${fmtNum(prevQty)} → ${fmtNum(curQty)} pairs</div>
         </div>
       </div>
-      ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel)}
+      ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
       ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
       ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
     `;
+    // Wire drill-down clicks pada baris toko (byStore table)
+    wrap.querySelectorAll('tr[data-drill-store]').forEach(tr => {
+      tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
+    });
   } catch (e) {
     // Filter change bikin fetch terabort — silent skip, next refresh akan re-render.
     if (e && (e.superseded || e.name === 'AbortError' || String(e?.message || '').includes('SUPERSEDED'))) {
@@ -3479,6 +3490,19 @@ function renderActiveTab(data) {
 // ============ EVENTS ============
 // Active sub-tab within Target tab: 'current' (date-scoped) or 'matrix' (monthly trend)
 state.targetSubtab = 'current';
+
+// Drill-down: dari tabel toko (Outlet/Growth) → filter ke toko itu + jump ke tab Produk.
+// Trigger di-attach di renderOutlet & renderGrowth via tr.onclick.
+function drillToProduk(storeName) {
+  if (!storeName) return;
+  state.store = [storeName];
+  state.page = 1;
+  if (window._msx && window._msx.store) window._msx.store.setSelected([storeName]);
+  // Switch tab ke Produk
+  const produkBtn = document.querySelector('.tab-btn[data-tab="produk"]');
+  if (produkBtn) produkBtn.click();
+  refresh({ reloadData: true });
+}
 
 function setupEvents() {
   // Tabs

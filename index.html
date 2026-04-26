@@ -910,12 +910,33 @@ table.data tfoot td {
     <div class="card" style="margin-bottom:12px;">
       <div class="card-header">
         <div class="card-title">Promo per Toko · Real Promo (exclude harga coret & diskon karyawan)</div>
+        <span class="muted" style="font-size:10px;">klik baris untuk lihat campaign apa aja di toko itu</span>
       </div>
       <div class="table-wrap" style="max-height:600px;overflow:auto;">
         <table class="data">
           <thead><tr id="promoTokoHead"></tr></thead>
           <tbody id="promoTokoBody"><tr><td colspan="7" class="loading">—</td></tr></tbody>
           <tfoot id="promoTokoFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" id="promoCampaignSection" style="margin-bottom:12px;display:none;">
+      <div class="card-header">
+        <div class="card-title" id="promoCampaignTitle">Detail Campaign</div>
+        <button id="promoCampaignClear" class="btn-ghost" style="font-size:11px;">← Kembali ke list toko</button>
+      </div>
+      <div class="table-wrap" style="max-height:480px;overflow:auto;">
+        <table class="data">
+          <thead><tr>
+            <th class="center" style="width:30px;">#</th>
+            <th>Campaign</th>
+            <th class="right">Pairs</th>
+            <th class="right">Revenue</th>
+            <th class="right">Diskon Rp</th>
+            <th class="right">% Diskon</th>
+          </tr></thead>
+          <tbody id="promoCampaignBody"></tbody>
         </table>
       </div>
     </div>
@@ -2271,7 +2292,7 @@ function renderPromo(data) {
       <th class="right">Total Rev Toko</th>
       <th class="right">% Promo</th>`;
     document.getElementById('promoTokoBody').innerHTML = rows.length
-      ? rows.map((r, i) => `<tr>
+      ? rows.map((r, i) => `<tr style="cursor:pointer;" data-promo-toko="${escapeHtml(r.name||'')}" title="Klik buat lihat campaign apa aja di toko ini">
           <td class="center muted">${i+1}</td>
           <td class="strong">${escapeHtml(titleCaseEntity(r.name||'-'))}</td>
           <td class="muted">${escapeHtml(r.area)}</td>
@@ -2281,6 +2302,52 @@ function renderPromo(data) {
           <td class="right strong" style="color:${r.sharePct>30?'#dc2626':r.sharePct>15?'#f59e0b':'#16a34a'};">${r.sharePct.toFixed(1)}%</td>
         </tr>`).join('')
       : '<tr><td colspan="7" class="empty" style="padding:24px;text-align:center;">Tidak ada toko dengan real promo di periode ini.</td></tr>';
+    // Wire klik toko → drill ke campaign section (set state.store filter, refresh)
+    document.querySelectorAll('#promoTokoBody tr[data-promo-toko]').forEach(tr => {
+      tr.onclick = () => {
+        const toko = tr.getAttribute('data-promo-toko');
+        if (!toko) return;
+        state.store = [toko];
+        state.page = 1;
+        if (window._msx && window._msx.store) window._msx.store.setSelected([toko]);
+        refresh({ reloadData: true });
+      };
+    });
+
+    // Render campaign breakdown kalau state.store cuma 1 (drill-down ke 1 toko)
+    const campSection = document.getElementById('promoCampaignSection');
+    const isDrilled = Array.isArray(state.store) && state.store.length === 1;
+    if (isDrilled) {
+      const tokoName = state.store[0];
+      document.getElementById('promoCampaignTitle').textContent = `Detail Campaign · ${titleCaseEntity(tokoName)}`;
+      const camps = (data.byPromoCampaign || []).filter(c => (Number(c.revenue)||0) > 0 || (Number(c.discount)||0) > 0);
+      camps.sort((a,b) => (Number(b.discount)||0) - (Number(a.discount)||0));
+      document.getElementById('promoCampaignBody').innerHTML = camps.length
+        ? camps.map((c, i) => {
+            const rev = Number(c.revenue)||0;
+            const disc = Number(c.discount)||0;
+            const gross = rev + disc;
+            const discPct = gross > 0 ? (disc/gross*100) : 0;
+            return `<tr>
+              <td class="center muted">${i+1}</td>
+              <td class="strong">${escapeHtml(c.name||'-')}</td>
+              <td class="right">${fmtNum(c.pairs||0)}</td>
+              <td class="right">${fmtRpShort(rev)}</td>
+              <td class="right strong">${fmtRpShort(disc)}</td>
+              <td class="right" style="color:${discPct>30?'#dc2626':discPct>15?'#f59e0b':'#16a34a'};">${discPct.toFixed(1)}%</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="6" class="empty" style="padding:24px;text-align:center;">Tidak ada campaign di toko ini.</td></tr>';
+      campSection.style.display = '';
+    } else {
+      campSection.style.display = 'none';
+    }
+    const clearBtn = document.getElementById('promoCampaignClear');
+    if (clearBtn) clearBtn.onclick = () => {
+      state.store = [];
+      if (window._msx && window._msx.store) window._msx.store.setSelected([]);
+      refresh({ reloadData: true });
+    };
     const sumPromoRev = rows.reduce((a,r) => a + r.promoRev, 0);
     const sumTotRev = rows.reduce((a,r) => a + r.totRev, 0);
     document.getElementById('promoTokoFoot').innerHTML = rows.length ? `<tr>

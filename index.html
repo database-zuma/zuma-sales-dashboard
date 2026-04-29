@@ -3770,10 +3770,10 @@ function setupEvents() {
   const onDateChange = async () => {
     state.from = document.getElementById('fPeriodeMulai').value;
     state.to = document.getElementById('fPeriodeAkhir').value;
-    // Re-sync constraints: mulai ≤ akhir, akhir ≥ mulai. No "today" limit so user
-    // can pick historical year (mis. 2025) without being kekunci.
-    document.getElementById('fPeriodeMulai').max = state.to || '';
-    document.getElementById('fPeriodeAkhir').min = state.from || '';
+    // Bersihin constraint apapun yg tersisa (paranoid; init udah ga set min/max).
+    document.getElementById('fPeriodeMulai').removeAttribute('min');
+    document.getElementById('fPeriodeMulai').removeAttribute('max');
+    document.getElementById('fPeriodeAkhir').removeAttribute('min');
     document.getElementById('fPeriodeAkhir').removeAttribute('max');
     Object.keys(cache).forEach(k => cache[k] = null);
     state.page = 1;
@@ -3893,7 +3893,11 @@ function applyPreset(key) {
   state.to = p.to;
   document.getElementById('fPeriodeMulai').value = state.from;
   document.getElementById('fPeriodeAkhir').value = state.to;
-  document.getElementById('fPeriodeAkhir').min = state.from;
+  // Bersihin constraint kalau preset jalanin
+  document.getElementById('fPeriodeMulai').removeAttribute('min');
+  document.getElementById('fPeriodeMulai').removeAttribute('max');
+  document.getElementById('fPeriodeAkhir').removeAttribute('min');
+  document.getElementById('fPeriodeAkhir').removeAttribute('max');
   // also clear in-memory cache so fresh range actually loads
   Object.keys(cache).forEach(k => cache[k] = null);
   document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('active', b.dataset.preset === key));
@@ -3906,11 +3910,10 @@ function init() {
   state.from = firstOfYear();
   state.to = todayStr();
   document.getElementById('fPeriodeMulai').value = state.from;
-  document.getElementById('fPeriodeMulai').max = state.to; // mulai ≤ akhir
   document.getElementById('fPeriodeAkhir').value = state.to;
-  document.getElementById('fPeriodeAkhir').min = state.from; // akhir ≥ mulai
-  // NOTE: ga set max = today untuk Periode Akhir — user boleh pilih tanggal
-  // historis (mis. all of 2025) tanpa kekunci di tahun berjalan.
+  // NOTE: ga set min/max constraint — bebasin user pilih tanggal mana aja
+  // (termasuk historis 2025, 2024, dll). Validasi from ≤ to dilakukan
+  // di onDateChange.
 
   setupEvents();
   // Initial load dengan progress overlay

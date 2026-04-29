@@ -3770,6 +3770,11 @@ function setupEvents() {
   const onDateChange = async () => {
     state.from = document.getElementById('fPeriodeMulai').value;
     state.to = document.getElementById('fPeriodeAkhir').value;
+    // Re-sync constraints: mulai ≤ akhir, akhir ≥ mulai. No "today" limit so user
+    // can pick historical year (mis. 2025) without being kekunci.
+    document.getElementById('fPeriodeMulai').max = state.to || '';
+    document.getElementById('fPeriodeAkhir').min = state.from || '';
+    document.getElementById('fPeriodeAkhir').removeAttribute('max');
     Object.keys(cache).forEach(k => cache[k] = null);
     state.page = 1;
     document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
@@ -3901,10 +3906,11 @@ function init() {
   state.from = firstOfYear();
   state.to = todayStr();
   document.getElementById('fPeriodeMulai').value = state.from;
-  document.getElementById('fPeriodeMulai').max = state.to;
+  document.getElementById('fPeriodeMulai').max = state.to; // mulai ≤ akhir
   document.getElementById('fPeriodeAkhir').value = state.to;
-  document.getElementById('fPeriodeAkhir').max = state.to;
-  document.getElementById('fPeriodeAkhir').min = state.from;
+  document.getElementById('fPeriodeAkhir').min = state.from; // akhir ≥ mulai
+  // NOTE: ga set max = today untuk Periode Akhir — user boleh pilih tanggal
+  // historis (mis. all of 2025) tanpa kekunci di tahun berjalan.
 
   setupEvents();
   // Initial load dengan progress overlay

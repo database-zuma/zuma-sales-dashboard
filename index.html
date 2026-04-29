@@ -1843,8 +1843,7 @@ function renderProduk(data) {
   const palette = ['#00E273','#002A3A','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#10b981','#f43f5e','#64748b','#14b8a6','#eab308','#a855f7'];
   const barOpts = {
     responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#002A3A',
-      callbacks: { label: c => fmtNum(c.parsed.x) + ' pairs' } } },
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#002A3A' } },
     scales: {
       x: { grid: { color: '#f1f5f9' }, ticks: { font: {size:10}, color: '#64748b' } },
       y: { grid: { display: false }, ticks: { font: {size:10}, color: '#64748b' } }
@@ -1853,14 +1852,41 @@ function renderProduk(data) {
   const pieOpts = {
     responsive: true, maintainAspectRatio: false,
     plugins: { legend: { position: 'right', labels: { font: {size:10}, boxWidth: 10 } },
-      tooltip: { backgroundColor: '#002A3A',
-        callbacks: { label: c => `${c.label}: ${fmtNum(c.parsed)} pairs` } } }
+      tooltip: { backgroundColor: '#002A3A' } }
   };
 
   const renderChart = (id, dataArr, opts, type='bar', limit=10, singleColor=null) => {
     const slice = (dataArr || []).slice(0, limit);
+    const totPairs = slice.reduce((s,x) => s + (Number(x.pairs)||0), 0) || 1;
+    const totRev   = slice.reduce((s,x) => s + (Number(x.revenue)||0), 0) || 1;
     const ctx = document.getElementById(id).getContext('2d');
     if (produkCharts[id]) produkCharts[id].destroy();
+
+    // Inject tooltip callback that shows pairs + revenue + % share for both
+    const finalOpts = {
+      ...opts,
+      plugins: {
+        ...(opts.plugins || {}),
+        tooltip: {
+          ...((opts.plugins || {}).tooltip || {}),
+          callbacks: {
+            title: (items) => items[0]?.label || '',
+            label: (c) => {
+              const item = slice[c.dataIndex] || {};
+              const pairs = Number(item.pairs) || 0;
+              const rev   = Number(item.revenue) || 0;
+              const pPct = (pairs / totPairs * 100).toFixed(1);
+              const rPct = (rev   / totRev   * 100).toFixed(1);
+              return [
+                `Pairs:   ${fmtNum(pairs)} (${pPct}%)`,
+                `Revenue: ${fmtRpShort(rev)} (${rPct}%)`,
+              ];
+            }
+          }
+        }
+      }
+    };
+
     produkCharts[id] = new Chart(ctx, {
       type,
       data: {
@@ -1869,7 +1895,7 @@ function renderProduk(data) {
           backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map((_, i) => palette[i%palette.length]),
           borderColor: '#fff', borderWidth: type === 'doughnut' ? 2 : 0, borderRadius: 3 }]
       },
-      options: opts,
+      options: finalOpts,
     });
   };
 

@@ -1886,10 +1886,9 @@ function renderProduk(data) {
               const item = slice[c.dataIndex] || {};
               const pairs = Number(item.pairs) || 0;
               const rev   = Number(item.revenue) || 0;
-              const pPct = (pairs / totPairs * 100).toFixed(1);
-              const rPct = (rev   / totRev   * 100).toFixed(1);
+              const rPct = (rev / totRev * 100).toFixed(1);
               return [
-                `Pairs:   ${fmtNum(pairs)} (${pPct}%)`,
+                `Pairs:   ${fmtNum(pairs)}`,
                 `Revenue: ${fmtRpShort(rev)} (${rPct}%)`,
               ];
             }
@@ -2048,13 +2047,11 @@ function renderHourly(data) {
             label: (c) => {
               if (c.datasetIndex !== 0) return null; // suppress duplicate on line dataset
               const h = hours[c.dataIndex] || { pairs:0, revenue:0, transactions:0 };
-              const pPct = (h.pairs / totalPairs * 100).toFixed(1);
               const rPct = (h.revenue / totalRev * 100).toFixed(1);
-              const tPct = (h.transactions / totalTrx * 100).toFixed(1);
               return [
-                `Pairs:    ${fmtNum(h.pairs)} (${pPct}%)`,
+                `Pairs:    ${fmtNum(h.pairs)}`,
                 `Revenue:  ${fmtRpShort(h.revenue)} (${rPct}%)`,
-                `Trx:      ${h.transactions ? fmtNum(h.transactions) : '—'} ${h.transactions ? `(${tPct}%)` : ''}`,
+                `Trx:      ${h.transactions ? fmtNum(h.transactions) : '—'}`,
               ];
             }
           }

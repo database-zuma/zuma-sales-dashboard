@@ -1020,7 +1020,7 @@ function lsInvalidate() {
 // e.g. 'dashboard' for /api/sales/dashboard — stops old filters from overwriting new.
 const _fetchGroups = new Map();
 
-async function fetchAPI(path, { timeoutMs = 45000, group = null } = {}) {
+async function fetchAPI(path, { timeoutMs = 90000, group = null } = {}) {
   const ctl = new AbortController();
   if (group) {
     const prev = _fetchGroups.get(group);

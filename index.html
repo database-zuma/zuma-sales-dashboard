@@ -1426,6 +1426,8 @@ function renderTrendChart(timeSeries) {
   });
   const keys = Object.keys(byBucket).sort();
   const revenues = keys.map(k => byBucket[k].revenue);
+  const totalRev = revenues.reduce((a,b) => a+b, 0) || 1;
+  const totalPairs = keys.reduce((s,k) => s + (byBucket[k].pairs||0), 0) || 1;
 
   const ctx = document.getElementById('chartTrend').getContext('2d');
   if (chartTrendInstance) chartTrendInstance.destroy();
@@ -1451,7 +1453,16 @@ function renderTrendChart(timeSeries) {
         tooltip: {
           backgroundColor: '#002A3A', padding: 8, titleFont:{size:11}, bodyFont:{size:11},
           callbacks: {
-            label: ctx => fmtRp(ctx.parsed.y),
+            label: (c) => {
+              const k = keys[c.dataIndex];
+              const b = byBucket[k] || { revenue: 0, pairs: 0 };
+              const rPct = (b.revenue / totalRev * 100).toFixed(1);
+              const pPct = (b.pairs / totalPairs * 100).toFixed(1);
+              return [
+                `Revenue: ${fmtRpShort(b.revenue)} (${rPct}%)`,
+                `Pairs:   ${fmtNum(b.pairs)} (${pPct}%)`,
+              ];
+            }
           }
         }
       },
@@ -2013,6 +2024,8 @@ function renderHourly(data) {
   const pairs = hours.map(h => h.pairs);
   const trx = hours.map(h => h.transactions);
   const totalPairs = pairs.reduce((a,b) => a+b, 0) || 1;
+  const totalRev = hours.reduce((s,h) => s + h.revenue, 0) || 1;
+  const totalTrx = trx.reduce((a,b) => a+b, 0) || 1;
 
   const ctx = document.getElementById('chartHourly').getContext('2d');
   if (chartHourlyInstance) chartHourlyInstance.destroy();
@@ -2027,7 +2040,26 @@ function renderHourly(data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position: 'top', labels: { font: {size:11}, boxWidth: 10 } },
-        tooltip: { backgroundColor: '#002A3A' } },
+        tooltip: {
+          backgroundColor: '#002A3A',
+          callbacks: {
+            // Render unified summary on first dataset hover, blank for the second so we
+            // don't repeat. Show pairs + revenue + trx all with % share to total.
+            label: (c) => {
+              if (c.datasetIndex !== 0) return null; // suppress duplicate on line dataset
+              const h = hours[c.dataIndex] || { pairs:0, revenue:0, transactions:0 };
+              const pPct = (h.pairs / totalPairs * 100).toFixed(1);
+              const rPct = (h.revenue / totalRev * 100).toFixed(1);
+              const tPct = (h.transactions / totalTrx * 100).toFixed(1);
+              return [
+                `Pairs:    ${fmtNum(h.pairs)} (${pPct}%)`,
+                `Revenue:  ${fmtRpShort(h.revenue)} (${rPct}%)`,
+                `Trx:      ${h.transactions ? fmtNum(h.transactions) : '—'} ${h.transactions ? `(${tPct}%)` : ''}`,
+              ];
+            }
+          }
+        }
+      },
       scales: {
         x: { grid: { display: false }, ticks: { font: {size:10}, color: '#64748b' },
              title: { display: true, text: 'Jam (WIB) · 00* = data non-timed (online/consig/wholesale)', font: {size:10}, color: '#94a3b8' } },

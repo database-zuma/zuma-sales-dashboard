@@ -3654,8 +3654,12 @@ async function refresh({ reloadData = true } = {}) {
       ['retail','online','wholesale','consig'].forEach(k => delete loadProgress[k]);
       loadProgress._subs.add(progressHandler);
 
+      // Keep existing table visible while new data loads (stale-while-revalidate UX).
+      // Only show the inline spinner when there's no prior data to display.
       const body = document.getElementById('performanceBody');
-      if (body) body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
+      if (body && !state.rawData) {
+        body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
+      }
       showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
       const t0 = performance.now();
       const data = await loadChannel(state.channel, state.from, state.to);
@@ -3813,19 +3817,23 @@ function setupEvents() {
   // Multi-select filters wired as component instances.
   // Each instance notifies us with new selected-array; we update state + refetch.
   window._msx = window._msx || {};
+  // Per-instance debounce timer prevents rapid multi-clicks from firing N API calls.
+  // Wait 250ms after the last change before triggering the actual refresh.
+  const _msxDebounce = {};
   const buildMsx = (containerId, stateKey, { searchable, placeholder, onSelect } = {}) => {
     const host = document.getElementById(containerId);
     if (!host) return null;
     const inst = new MultiSelect(host, {
       placeholder,
       searchable,
-      // Fire the side-effect (e.g. reload area-filtered options) and the data refresh
-      // in parallel so the UI doesn't wait for two sequential roundtrips.
       onChange: (vals) => {
         state[stateKey] = vals;
         state.page = 1;
         if (onSelect) onSelect(vals);
-        refresh({ reloadData: true });
+        clearTimeout(_msxDebounce[stateKey]);
+        _msxDebounce[stateKey] = setTimeout(() => {
+          refresh({ reloadData: true });
+        }, 250);
       }
     });
     return inst;

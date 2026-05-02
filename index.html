@@ -499,6 +499,15 @@ table.data tfoot td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Refresh button spins its icon while a load is in flight */
+.btn-ghost.loading svg {
+  animation: spin 0.8s linear infinite;
+  transform-origin: 50% 50%;
+}
+.btn-ghost.loading {
+  color: var(--accent);
+}
+
 .empty {
   padding: 60px 20px; text-align: center;
   color: var(--fg-muted); font-size: 12px;
@@ -3650,11 +3659,11 @@ function formatProgress(p) {
 
 async function refresh({ reloadData = true } = {}) {
   const btn = document.getElementById('btnRefresh');
-  const progressHandler = (p) => {
-    showStatus(`⏳ Memuat (${state.from} → ${state.to})  ·  ${formatProgress(p)}`, 'loading');
-  };
+  // Visual loading indicator only — spin the refresh button icon. No text status flash.
+  const progressHandler = () => {};
   try {
     btn.disabled = true;
+    btn.classList.add('loading');
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
       ['retail','online','wholesale','consig'].forEach(k => delete loadProgress[k]);
@@ -3704,6 +3713,7 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(msg)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
     btn.disabled = false;
+    btn.classList.remove('loading');
     loadProgress._subs.delete(progressHandler);
   }
 }

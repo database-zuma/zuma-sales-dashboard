@@ -87,8 +87,9 @@ html, body {
 .brand-sub { font-size: 10px; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 1px; }
 .header .pill { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
 .header .pill strong { color: #fff; }
-.header .btn-ghost { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+.header .btn-ghost { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: #fff; font-weight: 700; }
 .header .btn-ghost:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.header .btn-ghost svg { color: #38BDF8; }
 
 .header-right { display: flex; align-items: center; gap: 8px; }
 .pill {
@@ -499,12 +500,11 @@ table.data tfoot td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Refresh button spins its icon while a load is in flight.
-   Keep the icon at full white so it stays visible against the dark header;
-   the rotation alone signals loading. */
+/* Refresh button: blue spinning icon (sky-400) while loading, white bold text. */
 .header .btn-ghost.loading svg {
   animation: spin 0.8s linear infinite;
   transform-origin: 50% 50%;
+  color: #38BDF8;
 }
 .header .btn-ghost.loading,
 .header .btn-ghost.loading:hover {

@@ -499,13 +499,17 @@ table.data tfoot td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Refresh button spins its icon while a load is in flight */
-.btn-ghost.loading svg {
+/* Refresh button spins its icon while a load is in flight.
+   Keep the icon at full white so it stays visible against the dark header;
+   the rotation alone signals loading. */
+.header .btn-ghost.loading svg {
   animation: spin 0.8s linear infinite;
   transform-origin: 50% 50%;
 }
-.btn-ghost.loading {
-  color: var(--accent);
+.header .btn-ghost.loading,
+.header .btn-ghost.loading:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.18);
 }
 
 .empty {
@@ -1014,7 +1018,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.39';
+const APP_VERSION = 'v1.40';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1268,12 +1272,14 @@ const _refCache = new Map();
 
 async function loadReferenceOptions() {
   const sandalOnly = !state.skuOnly;
+  // Always fetch the FULL reference list for the channel + date range — never
+  // narrow by current selections. Otherwise picking "Bali 1" causes the area
+  // dropdown to drop "Bali 2"/"Bali 3", and the user can't pick a second area.
+  // Store cascade is handled client-side by applyStoreAreaCascade().
   const qs = new URLSearchParams({
     channel: state.channel, from: state.from, to: state.to,
     sku_only: String(sandalOnly),
   });
-  const sortedAreas = expandSelectedAreas([...(state.area || [])]).sort();
-  for (const a of sortedAreas) qs.append('area', a);
   const url = '/api/sales/filter-options?' + qs.toString();
   const cacheKey = url;
   if (_refCache.has(cacheKey)) {

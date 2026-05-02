@@ -995,7 +995,7 @@ const state = {
 const cache = {};
 
 // ============ LOCALSTORAGE CACHE (10min TTL) ============
-const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
@@ -3660,20 +3660,28 @@ async function refresh({ reloadData = true } = {}) {
       if (body && !state.rawData) {
         body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
       }
-      showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
+      // Delay loading status by 350ms so cached/fast responses don't flash "Memuat..."
+      const statusTimer = setTimeout(() => {
+        showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
+      }, 350);
       const t0 = performance.now();
       const data = await loadChannel(state.channel, state.from, state.to);
+      clearTimeout(statusTimer);
       const dt = Math.round((performance.now() - t0) / 100) / 10;
       state.rawData = data;
       populateFilters(data);
       const totalPairs = Number((data.kpis && data.kpis.pairs) || 0);
       if (!data || totalPairs === 0) {
         showStatus(`⚠️ API OK tapi 0 data untuk channel "${state.channel}" di periode ${state.from} → ${state.to}. Coba tanggal/channel lain.`, 'warn');
-      } else {
+      } else if ((performance.now() - t0) > 350) {
+        // Only show success status if it took long enough to be visible
         const byChannel = (data.byChannel || []).map(c => `${c.name}: ${fmtNum(c.pairs)}`).join(' · ');
         const source = data._fromCache ? 'dari cache lokal (instant)' : `dari server (${dt}s)`;
         showStatus(`✅ ${fmtNum(totalPairs)} pairs ${source} — ${byChannel}`, 'ok');
         setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
+      } else {
+        // Fast response — hide status bar entirely
+        const e = document.getElementById('statusBar'); if (e) e.style.display = 'none';
       }
     }
     const d = state.rawData || {};

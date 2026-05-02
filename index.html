@@ -1811,26 +1811,26 @@ function renderProdukTopTable(data) {
     if (isExpanded) {
       const sizes = r.sizes || [];
       const maxRev = sizes.reduce((m,s) => Math.max(m, s.revenue||0), 0) || 1;
-      rows.push(`<tr class="produk-detail-row"><td colspan="4" style="padding:0;background:var(--muted);">
+      rows.push(`<tr class="produk-detail-row"><td colspan="4" style="padding:0;background:#002A3A;color:#fff;">
         <div style="padding:8px 14px 10px 44px;">
-          <div style="font-size:9px;font-weight:700;color:var(--fg-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Breakdown per Kode Barang (${sizes.length} size)</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead><tr style="border-bottom:1px solid var(--border);">
-              <th style="text-align:left;padding:4px 6px;color:var(--fg-muted);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Kode Barang</th>
-              <th style="text-align:center;padding:4px 6px;color:var(--fg-muted);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Size</th>
-              <th style="text-align:right;padding:4px 6px;color:var(--fg-muted);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
-              <th style="text-align:right;padding:4px 6px;color:var(--fg-muted);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
-              <th style="text-align:left;padding:4px 6px;color:var(--fg-muted);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
+          <div style="font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Breakdown per Kode Barang (${sizes.length} size)</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;color:#fff;">
+            <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.15);">
+              <th style="text-align:left;padding:4px 6px;color:rgba(255,255,255,0.7);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Kode Barang</th>
+              <th style="text-align:center;padding:4px 6px;color:rgba(255,255,255,0.7);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Size</th>
+              <th style="text-align:right;padding:4px 6px;color:rgba(255,255,255,0.7);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
+              <th style="text-align:right;padding:4px 6px;color:rgba(255,255,255,0.7);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
+              <th style="text-align:left;padding:4px 6px;color:rgba(255,255,255,0.7);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
             </tr></thead>
             <tbody>
               ${sizes.map(s => {
                 const rev = Number(s.revenue)||0, pct = rev/maxRev*100;
                 return `<tr>
-                  <td style="padding:4px 6px;font-family:ui-monospace,monospace;font-size:11px;">${escapeHtml(s.kode_besar||'-')}</td>
-                  <td style="padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums;">${escapeHtml(String(s.size||'-'))}</td>
-                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtNum(s.pairs||0)}</td>
-                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500;">${fmtRpShort(rev)}</td>
-                  <td style="padding:4px 6px;"><div style="height:4px;background:var(--accent);width:${pct}%;border-radius:1px;"></div></td>
+                  <td style="padding:4px 6px;font-family:ui-monospace,monospace;font-size:11px;color:#fff;">${escapeHtml(s.kode_besar||'-')}</td>
+                  <td style="padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums;color:#fff;">${escapeHtml(String(s.size||'-'))}</td>
+                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#fff;">${fmtNum(s.pairs||0)}</td>
+                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#00E273;">${fmtRpShort(rev)}</td>
+                  <td style="padding:4px 6px;"><div style="height:4px;background:#00E273;width:${pct}%;border-radius:1px;"></div></td>
                 </tr>`;
               }).join('')}
             </tbody>

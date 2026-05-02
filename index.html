@@ -3958,7 +3958,7 @@ function init() {
   // di onDateChange.
 
   setupEvents();
-  // Initial load dengan progress overlay
+
   const overlay = document.getElementById('api-loading-overlay');
   const bar = document.getElementById('loadingProgressBar');
   const pct = document.getElementById('loadingPercent');
@@ -3968,8 +3968,25 @@ function init() {
     if (pct) pct.textContent = p + '%';
     if (status && label) status.textContent = label;
   };
+
+  // INSTANT FIRST PAINT — render from localStorage cache if available, then
+  // refresh in background. Avoids the "Menghubungi server…" wait on every page open.
+  const sandalOnly = !state.skuOnly;
+  const initialKey = `channel=${state.channel}&from=${state.from}&to=${state.to}&sku_only=${sandalOnly}`;
+  const cachedInitial = lsGet(initialKey);
+  if (cachedInitial) {
+    state.rawData = cachedInitial;
+    cache[initialKey] = cachedInitial;
+    if (overlay) overlay.style.display = 'none';
+    try { renderExecutive(cachedInitial); renderActiveTab(cachedInitial); populateFilters(cachedInitial); } catch (e) { console.warn('cache paint:', e); }
+    // Background refresh — silently update if newer data arrives
+    loadReferenceOptions().catch(e => console.warn('ref bg', e));
+    refresh({ reloadData: true }).catch(e => console.warn('refresh bg', e));
+    return;
+  }
+
+  // No cache — show overlay during cold load (existing behavior).
   setProg(10, 'Menghubungi server…');
-  // Hard safety timer — overlay auto-hide 15 detik no matter what, biar gak stuck ngeblok UI
   const safetyTimer = setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 15000);
   const refPromise = loadReferenceOptions().then(() => setProg(50, 'Filter options ✓ — memuat data channel…')).catch(e => console.warn('ref', e));
   const refreshPromise = refresh({ reloadData: true }).then(() => setProg(100, 'Siap ✓')).catch(e => console.warn('refresh', e));

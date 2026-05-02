@@ -3655,32 +3655,27 @@ async function refresh({ reloadData = true } = {}) {
       loadProgress._subs.add(progressHandler);
 
       // Keep existing table visible while new data loads (stale-while-revalidate UX).
-      // Only show the inline spinner when there's no prior data to display.
+      // Only show the inline spinner+status when there's no prior data — first ever load.
+      // For subsequent reloads (filter/channel/date changes), keep the old data visible
+      // and let the new data swap in silently when ready. No "⏳ Memuat..." flash.
+      const isFirstEverLoad = !state.rawData;
       const body = document.getElementById('performanceBody');
-      if (body && !state.rawData) {
+      if (body && isFirstEverLoad) {
         body.innerHTML = `<tr><td colspan="9" class="loading"><div class="spinner"></div>Memuat ${state.channel}...</td></tr>`;
       }
-      // Delay loading status by 350ms so cached/fast responses don't flash "Memuat..."
-      const statusTimer = setTimeout(() => {
+      const statusTimer = isFirstEverLoad ? setTimeout(() => {
         showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
-      }, 350);
+      }, 350) : null;
       const t0 = performance.now();
       const data = await loadChannel(state.channel, state.from, state.to);
-      clearTimeout(statusTimer);
-      const dt = Math.round((performance.now() - t0) / 100) / 10;
+      if (statusTimer) clearTimeout(statusTimer);
       state.rawData = data;
       populateFilters(data);
       const totalPairs = Number((data.kpis && data.kpis.pairs) || 0);
       if (!data || totalPairs === 0) {
         showStatus(`⚠️ API OK tapi 0 data untuk channel "${state.channel}" di periode ${state.from} → ${state.to}. Coba tanggal/channel lain.`, 'warn');
-      } else if ((performance.now() - t0) > 350) {
-        // Only show success status if it took long enough to be visible
-        const byChannel = (data.byChannel || []).map(c => `${c.name}: ${fmtNum(c.pairs)}`).join(' · ');
-        const source = data._fromCache ? 'dari cache lokal (instant)' : `dari server (${dt}s)`;
-        showStatus(`✅ ${fmtNum(totalPairs)} pairs ${source} — ${byChannel}`, 'ok');
-        setTimeout(() => { const e = document.getElementById('statusBar'); if (e) e.style.display = 'none'; }, 4000);
       } else {
-        // Fast response — hide status bar entirely
+        // Hide any leftover status — silent swap, no toast for normal loads.
         const e = document.getElementById('statusBar'); if (e) e.style.display = 'none';
       }
     }

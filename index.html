@@ -512,6 +512,33 @@ table.data tfoot td {
   background: rgba(255,255,255,0.18);
 }
 
+/* Top progress bar — full width animated stripe at top of page during load.
+   Highly visible without being intrusive (YouTube / Vercel / iSeller pattern). */
+#topProgress {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    #38BDF8 20%,
+    #00E273 50%,
+    #38BDF8 80%,
+    transparent 100%);
+  background-size: 200% 100%;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#topProgress.active {
+  opacity: 1;
+  animation: topProgressSlide 1.2s linear infinite;
+}
+@keyframes topProgressSlide {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
 .empty {
   padding: 60px 20px; text-align: center;
   color: var(--fg-muted); font-size: 12px;
@@ -553,6 +580,9 @@ table.data tfoot td {
 </style>
 </head>
 <body>
+
+<!-- Top progress bar — animates during background loads (filter, channel, refresh) -->
+<div id="topProgress"></div>
 
 <!-- Initial load overlay (hidden after data ready) -->
 <style>
@@ -3670,6 +3700,7 @@ async function refresh({ reloadData = true } = {}) {
   try {
     btn.disabled = true;
     btn.classList.add('loading');
+    document.getElementById('topProgress')?.classList.add('active');
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
       ['retail','online','wholesale','consig'].forEach(k => delete loadProgress[k]);
@@ -3720,6 +3751,7 @@ async function refresh({ reloadData = true } = {}) {
   } finally {
     btn.disabled = false;
     btn.classList.remove('loading');
+    document.getElementById('topProgress')?.classList.remove('active');
     loadProgress._subs.delete(progressHandler);
   }
 }

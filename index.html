@@ -453,6 +453,9 @@ table.data td.center { text-align: center; font-variant-numeric: tabular-nums; }
 table.data td.muted { color: var(--fg-muted); }
 table.data td.strong { font-weight: 500; color: var(--fg); }
 table.data tbody tr:hover { background: var(--muted); }
+/* Drill-down detail row: keep dark bg on hover so white text stays visible */
+table.data tbody tr.produk-detail-row:hover,
+table.data tbody tr.produk-detail-row:hover td { background: #002A3A !important; color: #fff !important; }
 table.data tfoot tr {
   background: linear-gradient(90deg, var(--gold-soft), var(--muted));
   border-top: 2px solid var(--gold);

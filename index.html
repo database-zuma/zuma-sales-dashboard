@@ -3478,24 +3478,27 @@ class MultiSelect {
   }
   _toggleValue(v) {
     if (this.selected.has(v)) this.selected.delete(v); else this.selected.add(v);
-    this._renderList();
     this._updateButton();
+    // Fire onChange BEFORE re-rendering the dropdown — caller (filter handler)
+    // can flip the progress bar on instantly without waiting for a 50-item list
+    // rebuild. List repaint is deferred to the next frame.
     this.onChange && this.onChange(Array.from(this.selected));
+    requestAnimationFrame(() => this._renderList());
   }
   selectAllVisible() {
     const q = this.search ? this.search.value.toLowerCase().trim() : '';
     const visible = q ? this.options.filter(o => o.label.toLowerCase().includes(q)) : this.options;
     for (const opt of visible) this.selected.add(opt.value);
-    this._renderList();
     this._updateButton();
     this.onChange && this.onChange(Array.from(this.selected));
+    requestAnimationFrame(() => this._renderList());
   }
   clear() {
     if (this.selected.size === 0) return;
     this.selected.clear();
-    this._renderList();
     this._updateButton();
     this.onChange && this.onChange([]);
+    requestAnimationFrame(() => this._renderList());
   }
   _updateButton() {
     const n = this.selected.size;

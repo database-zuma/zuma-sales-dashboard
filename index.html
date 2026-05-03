@@ -1060,7 +1060,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.43';
+const APP_VERSION = 'v1.44';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1342,28 +1342,24 @@ async function loadReferenceOptions() {
 }
 
 // Push reference lists into the multi-select components.
-// Stores from backend are already filtered by state.area (server-side). Just normalize
-// to {value, label} and push straight into the Toko dropdown. No client-side cascade.
+// Reference list is now FULL (no server-side narrowing). Store dropdown is
+// then narrowed CLIENT-SIDE via applyStoreAreaCascade() based on state.area.
 function applyReferenceOptions() {
   const r = state.referenceOptions || {};
+  // Preserve `area` field on each store so applyStoreAreaCascade can filter.
   const storeOpts = (r.stores || []).map(s => typeof s === 'string'
-    ? { value: s, label: s }
-    : { value: s.name, label: s.name });
+    ? { value: s, label: s, area: '' }
+    : { value: s.name, label: s.name, area: s.area || '' });
+  // Stash the FULL list — applyStoreAreaCascade reads from here.
+  state._allStoreOptions = storeOpts;
   if (window._msx) {
     window._msx.area   && window._msx.area.setOptions(r.areas   || []);
     window._msx.store  && window._msx.store.setOptions(storeOpts);
     window._msx.gender && window._msx.gender.setOptions(r.genders || []);
     window._msx.series && window._msx.series.setOptions(r.series || []);
     window._msx.tier   && window._msx.tier.setOptions(r.tiers   || []);
-    // Prune Toko selections that no longer appear in the filtered list.
-    if (Array.isArray(state.store) && state.store.length) {
-      const visibleNames = new Set(storeOpts.map(v => v.value));
-      const pruned = state.store.filter(s => visibleNames.has(s));
-      if (pruned.length !== state.store.length) {
-        state.store = pruned;
-        window._msx.store.setSelected(pruned);
-      }
-    }
+    // Apply area→store cascade now that the full list is loaded.
+    applyStoreAreaCascade();
   }
   const label = document.getElementById('msStoreLabel');
   if (label) label.textContent = filterEntityLabel(state.channel);
@@ -3915,11 +3911,12 @@ function setupEvents() {
     });
     return inst;
   };
-  // Area change → reload reference options with area filter so backend narrows the Toko
-  // list server-side (more reliable than client-side cascade).
+  // Area change → re-run client-side cascade so the Toko dropdown narrows
+  // to stores in the picked areas. No server roundtrip needed because the
+  // full store list is already loaded into state._allStoreOptions.
   window._msx.area   = buildMsx('msArea',   'area',   {
     searchable: false, placeholder: 'Semua Area',
-    onSelect: async () => { await loadReferenceOptions(); },
+    onSelect: () => { applyStoreAreaCascade(); },
   });
   window._msx.store  = buildMsx('msStore',  'store',  { searchable: true,  placeholder: 'Semua Toko' });
   window._msx.gender = buildMsx('msGender', 'gender', { searchable: false, placeholder: 'Semua Gender' });

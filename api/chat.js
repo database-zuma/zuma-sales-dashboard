@@ -68,20 +68,9 @@ export default async function handler(req) {
     return json(405, { error: 'method_not_allowed' }, origin);
   }
 
-  // Bracket access prevents any build-time static replacement.
-  const apiKey = process.env['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
+  const apiKey = process.env['GOOGLE_API_KEY'];
   if (!apiKey) {
-    const allKeys = Object.keys(process.env || {}).sort();
-    const googleRelated = allKeys.filter(k => /GOOGLE|GEMINI|API/i.test(k));
-    return json(500, {
-      error: 'missing_api_key',
-      detail: 'GOOGLE_API_KEY not visible to runtime',
-      env_count: allKeys.length,
-      google_or_api_keys: googleRelated,
-      bracket_value_present: !!process.env['GOOGLE_API_KEY'],
-      dot_value_present: !!process.env.GOOGLE_API_KEY,
-      bracket_length: (process.env['GOOGLE_API_KEY'] || '').length,
-    }, origin);
+    return json(500, { error: 'missing_api_key', detail: 'Set GOOGLE_API_KEY env var on Vercel.' }, origin);
   }
 
   let body;
@@ -119,11 +108,18 @@ export default async function handler(req) {
     parts: [{ text: m.content }],
   }));
 
+  // gemini-2.5-flash is the recommended free-tier model. thinkingBudget:0
+  // turns off the auto-reasoning step (otherwise even "hi" burns ~500 thought
+  // tokens, which is wasteful and chews through the 1500 RPD quota fast).
   const genAI = new GoogleGenerativeAI(apiKey);
   const geminiModel = genAI.getGenerativeModel({
-    model: model || 'gemini-2.0-flash',
+    model: model || 'gemini-2.5-flash',
     systemInstruction: SYSTEM_PROMPT,
-    generationConfig: { maxOutputTokens: 2048, temperature: 0.7 },
+    generationConfig: {
+      maxOutputTokens: 2048,
+      temperature: 0.7,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   });
 
   let result;

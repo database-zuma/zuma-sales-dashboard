@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.61';
+const APP_VERSION = 'v1.62';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4328,8 +4328,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
     const wrap = document.createElement('div');
     wrap.className = 'zc-empty';
     wrap.innerHTML = `
-      <div class="zc-empty-title">Halo! 👋</div>
-      <div>Aku bisa bantu interpretasi data dashboard. Coba tanya:</div>
+      <div class="zc-empty-title">Halo, aku Zuma AI Assistant.</div>
+      <div>Ada yang bisa dibantu?</div>
       <ul>${SUGGESTIONS.map(s => `<li data-q="${s.replace(/"/g,'&quot;')}">${s}</li>`).join('')}</ul>
     `;
     msgsEl.appendChild(wrap);

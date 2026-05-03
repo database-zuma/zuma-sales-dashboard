@@ -1060,7 +1060,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.44';
+const APP_VERSION = 'v1.45';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1435,8 +1435,35 @@ function applyStoreAreaCascade() {
   }
 }
 
-// Legacy populateFilters kept as thin no-op (reference options handle populating now).
-function populateFilters(data) { /* handled by loadReferenceOptions */ }
+// After data loads, narrow the Series dropdown to series present in the
+// currently-filtered payload — so picking Gender = WOMEN shrinks the Series
+// list to series that have women's products. Mirrors store-area cascade idea.
+// Falls back to the full reference list when no gender is selected.
+function populateFilters(data) {
+  if (!window._msx || !window._msx.series) return;
+  const refSeries = (state.referenceOptions && state.referenceOptions.series) || [];
+  const genderActive = Array.isArray(state.gender) && state.gender.length > 0;
+  if (!genderActive) {
+    window._msx.series.setOptions(refSeries);
+    return;
+  }
+  // bySeries from payload contains only series matching active filters (incl. gender).
+  const filteredSeries = (data && data.bySeries || [])
+    .map(s => String(s.name || s.series || '').trim())
+    .filter(Boolean);
+  // Preserve currently-selected series even if not in filtered set (so user can still see + un-pick them).
+  const merged = Array.from(new Set([...filteredSeries, ...(state.series || [])]));
+  window._msx.series.setOptions(merged.length ? merged : refSeries);
+  // Prune selections that are no longer valid options
+  if (Array.isArray(state.series) && state.series.length) {
+    const visible = new Set(merged);
+    const pruned = state.series.filter(s => visible.has(s));
+    if (pruned.length !== state.series.length) {
+      state.series = pruned;
+      window._msx.series.setSelected(pruned);
+    }
+  }
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

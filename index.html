@@ -501,25 +501,27 @@ table.data tfoot td {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Refresh button: while loading, hide the refresh arrows and show a round
-   blue spinner (clearly bulat + colored). Text "Refresh" stays white bold. */
+   bright spinner. Bigger + high-contrast yellow to pop against dark header. */
 .header .btn-ghost.loading svg { display: none; }
 .header .btn-ghost.loading::before {
   content: '';
   display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255,255,255,0.25);
-  border-top-color: #38BDF8;
-  border-right-color: #38BDF8;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid rgba(255,255,255,0.35);
+  border-top-color: #FACC15;
+  border-right-color: #FACC15;
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  vertical-align: -2px;
-  margin-right: 4px;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -3px;
+  margin-right: 6px;
+  box-shadow: 0 0 6px rgba(250,204,21,0.5);
 }
 .header .btn-ghost.loading,
 .header .btn-ghost.loading:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.18);
+  color: #FACC15;
+  background: rgba(250,204,21,0.15);
+  border-color: rgba(250,204,21,0.4);
 }
 
 /* Top progress bar — full width animated stripe at top of page during load.
@@ -1058,7 +1060,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.42';
+const APP_VERSION = 'v1.43';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

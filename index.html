@@ -1048,7 +1048,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.40';
+const APP_VERSION = 'v1.41';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4052,6 +4052,37 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ============ SERVICE WORKER ============
+// Caches static assets cache-first + API responses stale-while-revalidate.
+// Subsequent visits load instantly; fresh data lands silently in the background.
+// Register only when served over HTTPS (skip localhost / file://).
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((reg) => {
+        console.log('[sw] registered, scope:', reg.scope);
+        // Listen for fresh API responses landing in the background.
+        // When the SW finishes revalidating an API URL we already rendered from
+        // stale cache, blow away the in-memory + localStorage entries for that
+        // URL so the next user interaction (filter / channel / refresh) refetches
+        // and re-renders with up-to-date numbers.
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          const msg = event.data || {};
+          if (msg.type !== 'api-updated' || !msg.url) return;
+          try {
+            const u = new URL(msg.url);
+            const qs = u.search.startsWith('?') ? u.search.slice(1) : u.search;
+            // In-memory `cache` is keyed by qs.toString() in loadChannel.
+            if (typeof cache === 'object' && qs in cache) cache[qs] = null;
+            // localStorage cache keyed by same qs string.
+            try { localStorage.removeItem('zuma-sales-v5:' + qs); } catch {}
+          } catch {}
+        });
+      })
+      .catch((err) => console.warn('[sw] register failed:', err));
+  });
+}
 </script>
 
 </body>

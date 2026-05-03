@@ -1060,7 +1060,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.45';
+const APP_VERSION = 'v1.46';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2745,7 +2745,8 @@ async function renderGrowth() {
     if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
   } catch (e) {
     // Filter change bikin fetch terabort — silent skip, next refresh akan re-render.
-    if (e && (e.superseded || e.name === 'AbortError' || String(e?.message || '').includes('SUPERSEDED'))) {
+    const msg = String(e?.message || e || '');
+    if (e && (e.superseded || e.name === 'AbortError' || /supersed/i.test(msg))) {
       return;
     }
     console.error('renderGrowth', e);

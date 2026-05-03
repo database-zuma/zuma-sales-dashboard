@@ -454,9 +454,11 @@ table.data td.center { text-align: center; font-variant-numeric: tabular-nums; }
 table.data td.muted { color: var(--fg-muted); }
 table.data td.strong { font-weight: 500; color: var(--fg); }
 table.data tbody tr:hover { background: var(--muted); }
-/* Drill-down detail row: keep dark bg on hover so white text stays visible */
-table.data tbody tr.produk-detail-row:hover,
-table.data tbody tr.produk-detail-row:hover td { background: #002A3A !important; color: #fff !important; }
+/* Drill-down detail row: keep dark bg on hover. Use direct-child selector
+   so the inline-styled cells inside the NESTED breakdown table (yellow %,
+   green Revenue) keep their colors instead of being overridden to white. */
+table.data tbody tr.produk-detail-row:hover { background: #002A3A !important; }
+table.data tbody tr.produk-detail-row:hover > td { background: #002A3A !important; }
 table.data tfoot tr {
   background: linear-gradient(90deg, var(--gold-soft), var(--muted));
   border-top: 2px solid var(--gold);
@@ -1067,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.51';
+const APP_VERSION = 'v1.52';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1926,12 +1928,12 @@ function renderProdukTopTable(data) {
           <div style="display:inline-block;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;padding:3px 0;">Breakdown per Kode Barang (${sizes.length} size)</div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;color:#fff;">
             <thead><tr style="background:#FACC15;">
-              <th style="text-align:left;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Kode Barang</th>
-              <th style="text-align:center;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Size</th>
-              <th style="text-align:right;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
-              <th style="text-align:right;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">%</th>
-              <th style="text-align:right;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
-              <th style="text-align:left;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
+              <th style="text-align:left;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Kode Barang</th>
+              <th style="text-align:center;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Size</th>
+              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
+              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">%</th>
+              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
+              <th style="text-align:left;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
             </tr></thead>
             <tbody>
               ${sizes.map(s => {

@@ -500,25 +500,31 @@ table.data tfoot td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Refresh button while loading: spin the existing refresh-arrow logo + tint
-   it yellow + change label to "Memuat…" (handled in JS). Subtle pulse on the
-   yellow tint so the eye picks it up. */
+/* Refresh button while loading:
+   - Pill / fully-rounded shape (bukan kotak)
+   - Solid bright yellow background, dark text → maximum contrast
+   - Spin the refresh arrow logo
+   - Pulse the "Memuat…" label */
 .header .btn-ghost.loading svg {
   animation: spin 0.7s linear infinite;
   transform-origin: 50% 50%;
-  color: #FACC15;
-  filter: drop-shadow(0 0 3px rgba(250,204,21,0.6));
+  color: #002A3A;
 }
 .header .btn-ghost.loading,
 .header .btn-ghost.loading:hover {
-  color: #FACC15;
-  background: rgba(250,204,21,0.15);
-  border-color: rgba(250,204,21,0.4);
+  color: #002A3A;
+  background: #FACC15;
+  border-color: #FACC15;
+  border-radius: 9999px;
+  padding-left: 12px;
+  padding-right: 12px;
+  box-shadow: 0 0 0 3px rgba(250,204,21,0.35);
+  transition: border-radius 0.2s, background 0.2s;
 }
-@keyframes labelPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.65; } }
+@keyframes labelPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
 .header .btn-ghost.loading #btnRefreshLabel {
-  animation: labelPulse 1.2s ease-in-out infinite;
-  font-weight: 700;
+  animation: labelPulse 1.0s ease-in-out infinite;
+  font-weight: 800;
   letter-spacing: 0.02em;
 }
 
@@ -1058,7 +1064,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.47';
+const APP_VERSION = 'v1.48';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

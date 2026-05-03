@@ -1,9 +1,10 @@
 // AI chat assistant for the Zuma sales dashboard.
-// Streams from the Anthropic Claude API via an edge function so the API
-// key never reaches the browser. The browser sends { messages, context, model? }
-// and consumes the SSE stream Anthropic returns directly.
+// Streams from Google Gemini API via an edge function so the API key never
+// reaches the browser. The browser sends { messages, context, model? } and
+// receives a normalized NDJSON stream: one {"type":"text","text":"..."} per
+// chunk, plus a final {"type":"done"} or {"type":"error","message":"..."}.
 
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const config = { runtime: 'edge' };
 
@@ -55,6 +56,8 @@ Gaya jawab:
 
 Konteks dashboard saat ini akan diberikan di awal setiap pertanyaan.`;
 
+const ndjson = (encoder, obj) => encoder.encode(JSON.stringify(obj) + '\n');
+
 export default async function handler(req) {
   const origin = req.headers.get('origin') || '';
 
@@ -65,9 +68,9 @@ export default async function handler(req) {
     return json(405, { error: 'method_not_allowed' }, origin);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    return json(500, { error: 'missing_api_key', detail: 'Set ANTHROPIC_API_KEY env var on Vercel.' }, origin);
+    return json(500, { error: 'missing_api_key', detail: 'Set GOOGLE_API_KEY env var on Vercel.' }, origin);
   }
 
   let body;
@@ -87,8 +90,7 @@ export default async function handler(req) {
     }
   }
 
-  // Inject dashboard context as a prefix to the latest user message so the
-  // stable system prompt can stay cacheable across turns.
+  // Inject dashboard context as a prefix to the latest user message.
   let lastUserIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === 'user') { lastUserIdx = i; break; }
@@ -100,23 +102,44 @@ export default async function handler(req) {
     return { role: m.role, content: m.content };
   });
 
-  const client = new Anthropic({ apiKey });
+  // Convert to Gemini format: 'assistant' → 'model', content → parts[].text.
+  const geminiContents = apiMessages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
 
-  let stream;
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const geminiModel = genAI.getGenerativeModel({
+    model: model || 'gemini-2.0-flash',
+    systemInstruction: SYSTEM_PROMPT,
+    generationConfig: { maxOutputTokens: 2048, temperature: 0.7 },
+  });
+
+  let result;
   try {
-    stream = client.messages.stream({
-      model: model || 'claude-haiku-4-5',
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: apiMessages,
-    });
+    result = await geminiModel.generateContentStream({ contents: geminiContents });
   } catch (e) {
-    return json(502, { error: 'anthropic_request_failed', detail: String(e) }, origin);
+    return json(502, { error: 'gemini_request_failed', detail: String(e && e.message || e) }, origin);
   }
 
-  // SDK emits newline-delimited JSON (one Anthropic stream event per line).
-  // Browser parses each line as a separate event — see index.html chat widget.
-  return new Response(stream.toReadableStream(), {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of result.stream) {
+          const text = (typeof chunk.text === 'function') ? chunk.text() : '';
+          if (text) controller.enqueue(ndjson(encoder, { type: 'text', text }));
+        }
+        controller.enqueue(ndjson(encoder, { type: 'done' }));
+      } catch (e) {
+        controller.enqueue(ndjson(encoder, { type: 'error', message: String(e && e.message || e) }));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
     status: 200,
     headers: {
       'Content-Type': 'application/x-ndjson; charset=utf-8',

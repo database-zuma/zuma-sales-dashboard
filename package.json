@@ -2,8 +2,8 @@
   "name": "zuma-api-proxy",
   "version": "1.0.0",
   "private": true,
-  "description": "Edge proxy + cache to VPS API for zuma-sales-dashboard, plus Claude AI chat function",
+  "description": "Edge proxy + cache to VPS API for zuma-sales-dashboard, plus Gemini AI chat function",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.92.0"
+    "@google/generative-ai": "^0.24.1"
   }
 }

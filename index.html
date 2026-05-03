@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.57';
+const APP_VERSION = 'v1.58';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4478,10 +4478,15 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
           if (!trimmed) continue;
           let ev;
           try { ev = JSON.parse(trimmed); } catch { continue; }
-          if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') {
-            fullText += ev.delta.text;
+          if (ev.type === 'text' && typeof ev.text === 'string') {
+            fullText += ev.text;
             asstDiv.textContent = fullText;
             msgsEl.scrollTop = msgsEl.scrollHeight;
+          } else if (ev.type === 'error') {
+            asstDiv.classList.remove('zc-streaming', 'zc-asst');
+            asstDiv.classList.add('zc-error');
+            asstDiv.textContent = 'AI error: ' + (ev.message || 'unknown');
+            return;
           }
         }
       }

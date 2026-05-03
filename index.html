@@ -544,11 +544,14 @@ table.data tfoot td {
   z-index: 9999;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.2s;
+  /* Instant fade-in (so it's visible the same frame it gets activated),
+     slow fade-out (so the eye notices it disappear). */
+  transition: opacity 0s;
 }
 #topProgress.active {
   opacity: 1;
-  animation: topProgressSlide 1.2s linear infinite;
+  animation: topProgressSlide 1.0s linear infinite;
+  transition: opacity 0s;
 }
 @keyframes topProgressSlide {
   0%   { background-position: 100% 0; }
@@ -1064,7 +1067,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.49';
+const APP_VERSION = 'v1.50';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3746,6 +3749,9 @@ async function refresh({ reloadData = true } = {}) {
     const lbl = document.getElementById('btnRefreshLabel');
     if (lbl) lbl.textContent = 'Memuat…';
     document.getElementById('topProgress')?.classList.add('active');
+    // Track when loading started so we can keep the spinner visible long enough
+    // to actually be perceived (min 350ms) — cache hits return in ~50ms otherwise.
+    refresh._loadStartedAt = performance.now();
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
       ['retail','online','wholesale','consig'].forEach(k => delete loadProgress[k]);
@@ -3794,12 +3800,24 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('globalError').style.display = '';
     document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(msg)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
-    btn.disabled = false;
-    btn.classList.remove('loading');
-    const lbl = document.getElementById('btnRefreshLabel');
-    if (lbl) lbl.textContent = 'Refresh';
-    document.getElementById('topProgress')?.classList.remove('active');
-    loadProgress._subs.delete(progressHandler);
+    // Keep the spinner visible at least 350ms so the user actually sees it;
+    // cache hits otherwise return ~50ms and the loader appears+vanishes
+    // within a single frame.
+    const elapsed = performance.now() - (refresh._loadStartedAt || 0);
+    const minDuration = 350;
+    const cleanup = () => {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      const lbl = document.getElementById('btnRefreshLabel');
+      if (lbl) lbl.textContent = 'Refresh';
+      document.getElementById('topProgress')?.classList.remove('active');
+      loadProgress._subs.delete(progressHandler);
+    };
+    if (elapsed < minDuration) {
+      setTimeout(cleanup, minDuration - elapsed);
+    } else {
+      cleanup();
+    }
   }
 }
 

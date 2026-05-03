@@ -3841,6 +3841,7 @@ function setupEvents() {
 
   // Channel changes → clear entity-scoped filters (area/store vary per channel), reload ref + data
   document.getElementById('fChannel').onchange = async (e) => {
+    document.getElementById('topProgress')?.classList.add('active');
     state.channel = e.target.value;
     state.page = 1;
     // Reset scoped filters that won't overlap across channels
@@ -3855,6 +3856,7 @@ function setupEvents() {
 
   // Date changes → invalidate cache + reload (keep filters)
   const onDateChange = async () => {
+    document.getElementById('topProgress')?.classList.add('active');
     state.from = document.getElementById('fPeriodeMulai').value;
     state.to = document.getElementById('fPeriodeAkhir').value;
     // Bersihin constraint apapun yg tersisa (paranoid; init udah ga set min/max).
@@ -3875,7 +3877,7 @@ function setupEvents() {
   // Each instance notifies us with new selected-array; we update state + refetch.
   window._msx = window._msx || {};
   // Per-instance debounce timer prevents rapid multi-clicks from firing N API calls.
-  // Wait 250ms after the last change before triggering the actual refresh.
+  // Short 100ms window — enough to coalesce a quick double-click, fast enough to feel instant.
   const _msxDebounce = {};
   const buildMsx = (containerId, stateKey, { searchable, placeholder, onSelect } = {}) => {
     const host = document.getElementById(containerId);
@@ -3886,11 +3888,14 @@ function setupEvents() {
       onChange: (vals) => {
         state[stateKey] = vals;
         state.page = 1;
+        // Show progress bar IMMEDIATELY on click — don't wait for debounce.
+        // Without this the bar appears 100ms late and the click feels unresponsive.
+        document.getElementById('topProgress')?.classList.add('active');
         if (onSelect) onSelect(vals);
         clearTimeout(_msxDebounce[stateKey]);
         _msxDebounce[stateKey] = setTimeout(() => {
           refresh({ reloadData: true });
-        }, 250);
+        }, 100);
       }
     });
     return inst;

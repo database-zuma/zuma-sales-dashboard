@@ -71,12 +71,16 @@ export default async function handler(req) {
   // Bracket access prevents any build-time static replacement.
   const apiKey = process.env['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    const visibleKeys = Object.keys(process.env || {}).filter(k => !/SECRET|TOKEN|KEY|PASSWORD/i.test(k)).slice(0, 30);
+    const allKeys = Object.keys(process.env || {}).sort();
+    const googleRelated = allKeys.filter(k => /GOOGLE|GEMINI|API/i.test(k));
     return json(500, {
       error: 'missing_api_key',
       detail: 'GOOGLE_API_KEY not visible to runtime',
-      env_keys_visible: visibleKeys,
-      env_count: Object.keys(process.env || {}).length,
+      env_count: allKeys.length,
+      google_or_api_keys: googleRelated,
+      bracket_value_present: !!process.env['GOOGLE_API_KEY'],
+      dot_value_present: !!process.env.GOOGLE_API_KEY,
+      bracket_length: (process.env['GOOGLE_API_KEY'] || '').length,
     }, origin);
   }
 

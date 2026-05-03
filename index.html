@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.56';
+const APP_VERSION = 'v1.57';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4170,6 +4170,359 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
       .catch((err) => console.warn('[sw] register failed:', err));
   });
 }
+</script>
+
+<!-- ============ AI CHAT ASSISTANT WIDGET ============ -->
+<style>
+.zc-fab {
+  position: fixed; right: 20px; bottom: 20px; z-index: 9998;
+  width: 56px; height: 56px; border-radius: 50%; border: none;
+  background: var(--navy); color: var(--accent);
+  box-shadow: 0 6px 20px rgba(0,42,58,.35), 0 2px 6px rgba(0,42,58,.2);
+  cursor: pointer; font-size: 22px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.zc-fab:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 10px 28px rgba(0,42,58,.45); }
+.zc-fab.zc-hidden { display: none; }
+.zc-fab .zc-dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--navy);
+}
+
+.zc-panel {
+  position: fixed; right: 20px; bottom: 20px; z-index: 9999;
+  width: 380px; max-width: calc(100vw - 32px);
+  height: 580px; max-height: calc(100vh - 40px);
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,42,58,.28), 0 8px 16px rgba(0,42,58,.12);
+  display: none; flex-direction: column; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.zc-panel.zc-open { display: flex; }
+
+.zc-head {
+  background: linear-gradient(90deg, var(--navy) 0%, var(--navy) 60%, var(--accent) 200%);
+  color: #fff; padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.zc-head .zc-title { font-weight: 700; font-size: 13px; flex: 1; letter-spacing: .2px; }
+.zc-head .zc-sub { font-size: 10px; opacity: .75; font-weight: 500; }
+.zc-head .zc-close, .zc-head .zc-clear {
+  background: rgba(255,255,255,.12); border: none; color: #fff;
+  border-radius: 6px; cursor: pointer; padding: 4px 8px;
+  font-size: 11px; font-weight: 600;
+}
+.zc-head .zc-close:hover, .zc-head .zc-clear:hover { background: rgba(255,255,255,.22); }
+.zc-head .zc-close { font-size: 16px; line-height: 1; padding: 4px 9px; }
+
+.zc-msgs {
+  flex: 1; overflow-y: auto; padding: 14px;
+  background: #f9fafb;
+  display: flex; flex-direction: column; gap: 10px;
+  font-size: 13px; line-height: 1.5;
+}
+.zc-msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; word-wrap: break-word; white-space: pre-wrap; }
+.zc-msg.zc-user { background: var(--navy); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.zc-msg.zc-asst { background: #fff; color: var(--navy); align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #e5e7eb; }
+.zc-msg.zc-asst.zc-streaming::after {
+  content: '▋'; display: inline-block; margin-left: 2px;
+  animation: zc-blink 1s steps(2) infinite;
+  color: var(--accent);
+}
+@keyframes zc-blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+.zc-msg.zc-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; align-self: flex-start; }
+.zc-empty {
+  margin: auto; text-align: center; color: #6b7280; font-size: 12px; padding: 24px;
+}
+.zc-empty .zc-empty-title { font-weight: 700; color: var(--navy); font-size: 14px; margin-bottom: 6px; }
+.zc-empty ul { list-style: none; padding: 0; margin: 12px 0 0 0; text-align: left; }
+.zc-empty li {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+  padding: 8px 10px; margin: 6px 0; cursor: pointer; font-size: 12px;
+  color: var(--navy); transition: border-color .15s;
+}
+.zc-empty li:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+.zc-input-row {
+  display: flex; gap: 8px; padding: 10px;
+  background: #fff; border-top: 1px solid #e5e7eb;
+}
+.zc-input {
+  flex: 1; resize: none; border: 1px solid #d1d5db; border-radius: 8px;
+  padding: 8px 10px; font-size: 13px; font-family: inherit; line-height: 1.4;
+  outline: none; transition: border-color .15s; max-height: 100px;
+}
+.zc-input:focus { border-color: var(--accent); }
+.zc-send {
+  background: var(--accent); color: var(--navy); border: none;
+  border-radius: 8px; padding: 0 14px; cursor: pointer;
+  font-weight: 700; font-size: 13px;
+}
+.zc-send:disabled { background: #d1d5db; color: #6b7280; cursor: not-allowed; }
+.zc-send:hover:not(:disabled) { background: var(--accent-dark); }
+
+@media (max-width: 480px) {
+  .zc-panel { right: 8px; bottom: 8px; left: 8px; width: auto; height: 75vh; }
+  .zc-fab { right: 16px; bottom: 16px; }
+}
+</style>
+
+<button class="zc-fab" id="zcFab" aria-label="Buka AI Assistant" title="Tanya AI tentang data dashboard">
+  <span>💬</span>
+  <span class="zc-dot"></span>
+</button>
+
+<div class="zc-panel" id="zcPanel" role="dialog" aria-label="Zuma AI Assistant">
+  <div class="zc-head">
+    <div style="flex:1;">
+      <div class="zc-title">✨ Zuma AI Assistant</div>
+      <div class="zc-sub">Tanya soal sales, KPI, anomaly</div>
+    </div>
+    <button class="zc-clear" id="zcClear" title="Reset percakapan">Clear</button>
+    <button class="zc-close" id="zcClose" aria-label="Tutup">×</button>
+  </div>
+  <div class="zc-msgs" id="zcMsgs"></div>
+  <form class="zc-input-row" id="zcForm">
+    <textarea class="zc-input" id="zcInput" placeholder="Tanya tentang data… (Enter kirim, Shift+Enter baris baru)" rows="2"></textarea>
+    <button type="submit" class="zc-send" id="zcSend">Kirim</button>
+  </form>
+</div>
+
+<script>
+(function() {
+  // Chat endpoint mirrors the API_BASE pattern from the dashboard:
+  // relative when served from vercel.app (no CORS preflight),
+  // absolute when served from github.io (CORS allowed by /api/chat.js).
+  const CHAT_API = (typeof location !== 'undefined' && /(?:^|\.)zuma-api-proxy\.vercel\.app$/.test(location.host))
+    ? '/api/chat'
+    : 'https://zuma-api-proxy.vercel.app/api/chat';
+
+  const SUGGESTIONS = [
+    'Toko mana yang underperform di periode ini?',
+    'Ringkas insight utama dari KPI yang lagi tampil',
+    'Channel mana yang ASP-nya paling tinggi & kenapa?',
+    'Ada anomaly di promo / discount?',
+  ];
+
+  const fab = document.getElementById('zcFab');
+  const panel = document.getElementById('zcPanel');
+  const closeBtn = document.getElementById('zcClose');
+  const clearBtn = document.getElementById('zcClear');
+  const msgsEl = document.getElementById('zcMsgs');
+  const input = document.getElementById('zcInput');
+  const sendBtn = document.getElementById('zcSend');
+  const form = document.getElementById('zcForm');
+
+  let history = []; // [{role, content}], for both UI render and API
+  let streaming = false;
+
+  function open() { panel.classList.add('zc-open'); fab.classList.add('zc-hidden'); renderEmpty(); setTimeout(() => input.focus(), 50); }
+  function close() { panel.classList.remove('zc-open'); fab.classList.remove('zc-hidden'); }
+  function clearChat() { if (streaming) return; history = []; msgsEl.innerHTML = ''; renderEmpty(); input.focus(); }
+
+  function renderEmpty() {
+    if (history.length > 0) return;
+    msgsEl.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'zc-empty';
+    wrap.innerHTML = `
+      <div class="zc-empty-title">Halo! 👋</div>
+      <div>Aku bisa bantu interpretasi data dashboard. Coba tanya:</div>
+      <ul>${SUGGESTIONS.map(s => `<li data-q="${s.replace(/"/g,'&quot;')}">${s}</li>`).join('')}</ul>
+    `;
+    msgsEl.appendChild(wrap);
+    wrap.querySelectorAll('li').forEach(li => {
+      li.addEventListener('click', () => { input.value = li.dataset.q; input.focus(); });
+    });
+  }
+
+  function appendMsg(role, text) {
+    if (history.length === 0) msgsEl.innerHTML = ''; // strip empty-state
+    const div = document.createElement('div');
+    div.className = `zc-msg zc-${role}`;
+    div.textContent = text;
+    msgsEl.appendChild(div);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return div;
+  }
+
+  function fmtIDR(n) {
+    if (n == null || !isFinite(n)) return '-';
+    return 'Rp ' + Math.round(n).toLocaleString('id-ID');
+  }
+  function fmtInt(n) {
+    if (n == null || !isFinite(n)) return '-';
+    return Math.round(n).toLocaleString('id-ID');
+  }
+
+  // Build a context string from the live dashboard state. Best-effort:
+  // reads `state` (defined as a global const in this file) and the visible
+  // KPI numbers from the DOM. Failures fall through silently — the assistant
+  // is told to refuse if context is missing.
+  function getDashboardContext() {
+    const lines = [];
+    try {
+      const s = (typeof state === 'object' && state) ? state : {};
+      lines.push(`Channel aktif: ${s.channel || '?'}`);
+      lines.push(`Periode: ${s.from || '?'} → ${s.to || '?'}`);
+
+      const filterParts = [];
+      if (Array.isArray(s.area) && s.area.length) filterParts.push(`Area=[${s.area.join(', ')}]`);
+      if (Array.isArray(s.store) && s.store.length) filterParts.push(`Toko=[${s.store.slice(0,8).join(', ')}${s.store.length > 8 ? '…' : ''}]`);
+      if (Array.isArray(s.gender) && s.gender.length) filterParts.push(`Gender=[${s.gender.join(', ')}]`);
+      if (Array.isArray(s.series) && s.series.length) filterParts.push(`Series=[${s.series.join(', ')}]`);
+      if (Array.isArray(s.tier) && s.tier.length) filterParts.push(`Tier=[${s.tier.join(', ')}]`);
+      if (Array.isArray(s.sku) && s.sku.length) filterParts.push(`SKU=[${s.sku.slice(0,5).join(', ')}${s.sku.length > 5 ? '…' : ''}]`);
+      if (s.skuOnly) filterParts.push('SandalOnly=ON');
+      if (s.search) filterParts.push(`Search="${s.search}"`);
+      lines.push(`Filter: ${filterParts.length ? filterParts.join(' | ') : '(tidak ada filter — tampil semua)'}`);
+
+      // KPI ring — try common selectors used in the dashboard.
+      const kpiMap = [
+        ['Omzet', '#kpiOmzet'], ['Pairs', '#kpiPairs'], ['Trx', '#kpiTrx'],
+        ['ATU (unit/txn)', '#kpiUpt'], ['ASP (Rp/pair)', '#kpiAsp'], ['ATV (Rp/txn)', '#kpiAtv'],
+      ];
+      const kpis = [];
+      for (const [label, sel] of kpiMap) {
+        const el = document.querySelector(sel);
+        const v = el && el.textContent ? el.textContent.trim() : null;
+        if (v && v !== '-' && v !== '') kpis.push(`${label}: ${v}`);
+      }
+      if (kpis.length) {
+        lines.push(`KPI saat ini:\n  ${kpis.join('\n  ')}`);
+      }
+
+      // Top rows from the visible performance table, if present.
+      const perfRows = document.querySelectorAll('#perfTbl tbody tr, .perf-table tbody tr');
+      if (perfRows.length) {
+        const top = [];
+        const limit = Math.min(perfRows.length, 8);
+        for (let i = 0; i < limit; i++) {
+          const cells = perfRows[i].querySelectorAll('td');
+          if (cells.length >= 3) {
+            const cellTxt = Array.from(cells).slice(0, 5).map(c => (c.textContent || '').trim().replace(/\s+/g, ' '));
+            top.push(`  ${cellTxt.join(' | ')}`);
+          }
+        }
+        if (top.length) lines.push(`Top performer terlihat:\n${top.join('\n')}`);
+      }
+
+      // Tab aktif (executive / outlet / produk / dst.)
+      const activeTab = document.querySelector('.tab.active, .tab-active, [data-tab].active');
+      if (activeTab) {
+        const tabName = activeTab.dataset.tab || activeTab.textContent || '';
+        if (tabName) lines.push(`Tab aktif: ${tabName.trim().replace(/\s+/g, ' ').slice(0, 40)}`);
+      }
+    } catch (e) {
+      lines.push('(gagal baca state dashboard: ' + (e && e.message || e) + ')');
+    }
+    return lines.join('\n');
+  }
+
+  async function send() {
+    if (streaming) return;
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = '';
+    input.style.height = '';
+
+    appendMsg('user', q);
+    history.push({ role: 'user', content: q });
+
+    const asstDiv = appendMsg('asst', '');
+    asstDiv.classList.add('zc-streaming');
+
+    streaming = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '…';
+
+    let fullText = '';
+    try {
+      const resp = await fetch(CHAT_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history,
+          context: getDashboardContext(),
+        }),
+      });
+
+      if (!resp.ok) {
+        let detail = '';
+        try { detail = (await resp.json()).detail || (await resp.text()); } catch { detail = await resp.text(); }
+        asstDiv.classList.remove('zc-streaming');
+        asstDiv.classList.remove('zc-asst');
+        asstDiv.classList.add('zc-error');
+        asstDiv.textContent = `Error ${resp.status}: ${String(detail).slice(0, 300)}`;
+        history.pop(); // drop the user msg from history so retry fresh
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      // The server pipes the Anthropic SDK's `toReadableStream()` output, which
+      // is newline-delimited JSON — one stream event per line. Parse line by line.
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // last potentially incomplete line stays in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let ev;
+          try { ev = JSON.parse(trimmed); } catch { continue; }
+          if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') {
+            fullText += ev.delta.text;
+            asstDiv.textContent = fullText;
+            msgsEl.scrollTop = msgsEl.scrollHeight;
+          }
+        }
+      }
+
+      asstDiv.classList.remove('zc-streaming');
+      if (!fullText) {
+        asstDiv.classList.add('zc-error');
+        asstDiv.textContent = 'Respons kosong dari AI. Coba ulang.';
+        history.pop();
+      } else {
+        history.push({ role: 'assistant', content: fullText });
+      }
+    } catch (e) {
+      asstDiv.classList.remove('zc-streaming');
+      asstDiv.classList.add('zc-error');
+      asstDiv.textContent = 'Network error: ' + (e && e.message || e);
+      history.pop();
+    } finally {
+      streaming = false;
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Kirim';
+      input.focus();
+    }
+  }
+
+  fab.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  clearBtn.addEventListener('click', clearChat);
+  form.addEventListener('submit', (e) => { e.preventDefault(); send(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  // Auto-grow textarea up to ~4 lines.
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  });
+
+  // Expose for debugging.
+  window.ZumaChat = { open, close, clear: clearChat };
+})();
 </script>
 
 </body>

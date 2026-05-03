@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.59';
+const APP_VERSION = 'v1.60';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4470,10 +4470,33 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
     return lines.join('\n');
   }
 
+  // Returns true when at least one breakdown table has rows OR the KPI ring
+  // shows real numbers. Used to gate the chat — sending while the dashboard
+  // is still loading guarantees the AI either hallucinates or refuses, both
+  // of which waste a free-tier quota slot.
+  function dataLooksLoaded() {
+    try {
+      const omzet = (document.querySelector('#kpiOmzet')?.textContent || '').trim();
+      if (omzet && omzet !== '—' && omzet !== '-' && omzet !== '0' && /\d/.test(omzet)) return true;
+      const tableSelectors = ['#performanceTable tbody tr', '#outletTable tbody tr', '#produkTopTable tbody tr', '#contribTable tbody tr'];
+      for (const sel of tableSelectors) {
+        if (document.querySelectorAll(sel).length > 0) return true;
+      }
+    } catch {}
+    return false;
+  }
+
   async function send() {
     if (streaming) return;
     const q = input.value.trim();
     if (!q) return;
+
+    if (!dataLooksLoaded()) {
+      // Show inline warning, don't consume the question.
+      appendMsg('asst', '⏳ Tunggu data dashboard ke-load dulu (KPI masih "—"). Coba lagi 3-5 detik.').classList.add('zc-error');
+      return;
+    }
+
     input.value = '';
     input.style.height = '';
 

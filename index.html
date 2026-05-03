@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.55';
+const APP_VERSION = 'v1.56';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1192,6 +1192,17 @@ async function loadChannel(channel, from, to, opts = {}) {
     const data = await fetchAPI('/api/sales/dashboard?' + qs.toString(), { group });
     const dt = Math.round((performance.now() - t0) / 100) / 10;
     setProgress(channel, { ok: true, dt });
+    // Strip UNKNOWN / "-" entries from breakdown arrays — they're noisy
+    // accessories (shopping bag, paperbag, GWP) and clutter the charts.
+    const isJunk = (v) => {
+      const s = String(v == null ? '' : v).trim().toUpperCase();
+      return s === '' || s === 'UNKNOWN' || s === '-' || s === 'N/A';
+    };
+    ['byGender','byTier','bySeries','byTipe','bySize','byPrice'].forEach(k => {
+      if (Array.isArray(data[k])) {
+        data[k] = data[k].filter(r => !isJunk(r && (r.name || r.gender || r.tier || r.series || r.tipe || r.size || r.label)));
+      }
+    });
     cache[cacheKey] = data;
     lsSet(cacheKey, data);
     return data;

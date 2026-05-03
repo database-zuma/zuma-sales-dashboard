@@ -1067,7 +1067,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.50';
+const APP_VERSION = 'v1.51';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3800,11 +3800,10 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('globalError').style.display = '';
     document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(msg)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
-    // Keep the spinner visible at least 350ms so the user actually sees it;
-    // cache hits otherwise return ~50ms and the loader appears+vanishes
-    // within a single frame.
-    const elapsed = performance.now() - (refresh._loadStartedAt || 0);
-    const minDuration = 350;
+    // Hide the spinner only AFTER the browser has actually painted the new
+    // data. Without rAF the spinner can disappear in the same frame the
+    // table re-renders, making it look like "loading done but data still
+    // catching up". Two rAFs guarantee the layout/paint pass completed.
     const cleanup = () => {
       btn.disabled = false;
       btn.classList.remove('loading');
@@ -3813,11 +3812,7 @@ async function refresh({ reloadData = true } = {}) {
       document.getElementById('topProgress')?.classList.remove('active');
       loadProgress._subs.delete(progressHandler);
     };
-    if (elapsed < minDuration) {
-      setTimeout(cleanup, minDuration - elapsed);
-    } else {
-      cleanup();
-    }
+    requestAnimationFrame(() => requestAnimationFrame(cleanup));
   }
 }
 

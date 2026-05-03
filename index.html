@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.52';
+const APP_VERSION = 'v1.53';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3745,6 +3745,10 @@ async function refresh({ reloadData = true } = {}) {
   const btn = document.getElementById('btnRefresh');
   // Visual loading indicator only — spin the refresh button icon. No text status flash.
   const progressHandler = () => {};
+  // Reference-count concurrent refreshes so the spinner only goes away when the
+  // LAST in-flight load resolves. Without this, fast user clicks fire 2 refreshes;
+  // the first one's cleanup turns the spinner off while the second is still loading.
+  refresh._inflight = (refresh._inflight || 0) + 1;
   try {
     btn.disabled = true;
     btn.classList.add('loading');
@@ -3802,19 +3806,28 @@ async function refresh({ reloadData = true } = {}) {
     document.getElementById('globalError').style.display = '';
     document.getElementById('globalError').innerHTML = `<div class="alert-error">⚠️ Gagal memuat data: ${escapeHtml(msg)}.<br>Diagnostic: channel=${state.channel}, from=${state.from}, to=${state.to}, url=${API_BASE}. Cek DevTools → Network untuk detail.</div>`;
   } finally {
-    // Hide the spinner only AFTER the browser has actually painted the new
-    // data. Without rAF the spinner can disappear in the same frame the
-    // table re-renders, making it look like "loading done but data still
-    // catching up". Two rAFs guarantee the layout/paint pass completed.
-    const cleanup = () => {
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      const lbl = document.getElementById('btnRefreshLabel');
-      if (lbl) lbl.textContent = 'Refresh';
-      document.getElementById('topProgress')?.classList.remove('active');
+    // Decrement first; only run cleanup if THIS was the last in-flight refresh.
+    // Otherwise wait — another refresh is still running and the spinner should
+    // stay visible.
+    refresh._inflight = Math.max(0, (refresh._inflight || 1) - 1);
+    if (refresh._inflight === 0) {
+      // Hide the spinner only AFTER the browser has painted the new data.
+      // Two rAFs guarantee the layout/paint pass completed.
+      const cleanup = () => {
+        // Re-check after rAF in case a new refresh started in the meantime.
+        if (refresh._inflight > 0) return;
+        btn.disabled = false;
+        btn.classList.remove('loading');
+        const lbl = document.getElementById('btnRefreshLabel');
+        if (lbl) lbl.textContent = 'Refresh';
+        document.getElementById('topProgress')?.classList.remove('active');
+        loadProgress._subs.delete(progressHandler);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(cleanup));
+    } else {
+      // Still loading — only detach this call's progress subscriber.
       loadProgress._subs.delete(progressHandler);
-    };
-    requestAnimationFrame(() => requestAnimationFrame(cleanup));
+    }
   }
 }
 

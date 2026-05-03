@@ -508,11 +508,11 @@ table.data tfoot td {
 .header .btn-ghost.loading svg {
   animation: spin 0.7s linear infinite;
   transform-origin: 50% 50%;
-  color: #002A3A;
+  color: #000;
 }
 .header .btn-ghost.loading,
 .header .btn-ghost.loading:hover {
-  color: #002A3A;
+  color: #000;
   background: #FACC15;
   border-color: #FACC15;
   border-radius: 9999px;
@@ -1064,7 +1064,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.48';
+const APP_VERSION = 'v1.49';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

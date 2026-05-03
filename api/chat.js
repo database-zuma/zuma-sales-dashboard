@@ -68,9 +68,16 @@ export default async function handler(req) {
     return json(405, { error: 'method_not_allowed' }, origin);
   }
 
-  const apiKey = process.env.GOOGLE_API_KEY;
+  // Bracket access prevents any build-time static replacement.
+  const apiKey = process.env['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    return json(500, { error: 'missing_api_key', detail: 'Set GOOGLE_API_KEY env var on Vercel.' }, origin);
+    const visibleKeys = Object.keys(process.env || {}).filter(k => !/SECRET|TOKEN|KEY|PASSWORD/i.test(k)).slice(0, 30);
+    return json(500, {
+      error: 'missing_api_key',
+      detail: 'GOOGLE_API_KEY not visible to runtime',
+      env_keys_visible: visibleKeys,
+      env_count: Object.keys(process.env || {}).length,
+    }, origin);
   }
 
   let body;

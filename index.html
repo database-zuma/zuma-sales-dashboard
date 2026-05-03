@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.58';
+const APP_VERSION = 'v1.59';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4394,26 +4394,75 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
         lines.push(`KPI saat ini:\n  ${kpis.join('\n  ')}`);
       }
 
-      // Top rows from the visible performance table, if present.
-      const perfRows = document.querySelectorAll('#perfTbl tbody tr, .perf-table tbody tr');
-      if (perfRows.length) {
-        const top = [];
-        const limit = Math.min(perfRows.length, 8);
-        for (let i = 0; i < limit; i++) {
-          const cells = perfRows[i].querySelectorAll('td');
-          if (cells.length >= 3) {
-            const cellTxt = Array.from(cells).slice(0, 5).map(c => (c.textContent || '').trim().replace(/\s+/g, ' '));
-            top.push(`  ${cellTxt.join(' | ')}`);
-          }
+      // Scrape tables across ALL tabs — DOM persists even when tab not active.
+      // Each entry: [label, table-element-selector, max rows, max columns].
+      // The dashboard uses scoped tbody IDs (performanceBody, outletBody, etc.)
+      // so we walk those directly. Header text is taken from the matching head.
+      const tableSpecs = [
+        ['Performance per Outlet (Executive tab)', '#performanceTable', 15, 8],
+        ['Outlet breakdown',                       '#outletTable',     15, 8],
+        ['Outlet × Area aggregation',              '#outletAreaTable',  20, 6],
+        ['Top Produk (SKU)',                       '#produkTopTable',  15, 8],
+        ['Contribution',                           '#contribTable',    15, 6],
+        ['SPG leaderboard',                        '#spgBody',         12, 8],  // tbody only
+        ['Promo breakdown',                        '#promoDimBody',    12, 8],  // tbody only
+      ];
+
+      function dumpTable(label, sel, maxRows, maxCols) {
+        let tbl = document.querySelector(sel);
+        if (!tbl) return null;
+        // If the selector points at a tbody, use it directly; otherwise grab the tbody under it.
+        const isTbody = tbl.tagName.toLowerCase() === 'tbody';
+        const headEl = isTbody ? tbl.parentElement?.querySelector('thead') : tbl.querySelector('thead');
+        const bodyEl = isTbody ? tbl : tbl.querySelector('tbody');
+        if (!bodyEl) return null;
+        const rowEls = bodyEl.querySelectorAll('tr');
+        if (!rowEls.length) return null;
+
+        const lines = [`### ${label}`];
+
+        // Header
+        const headRow = headEl?.querySelector('tr');
+        if (headRow) {
+          const headerCells = Array.from(headRow.querySelectorAll('th, td'))
+            .slice(0, maxCols)
+            .map(c => (c.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 25));
+          if (headerCells.length) lines.push('  HEADER: ' + headerCells.join(' | '));
         }
-        if (top.length) lines.push(`Top performer terlihat:\n${top.join('\n')}`);
+
+        // Data rows
+        const limit = Math.min(rowEls.length, maxRows);
+        let added = 0;
+        for (let i = 0; i < limit; i++) {
+          const cells = rowEls[i].querySelectorAll('td');
+          if (cells.length < 2) continue;
+          const cellTxt = Array.from(cells)
+            .slice(0, maxCols)
+            .map(c => (c.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40));
+          lines.push('  ' + cellTxt.join(' | '));
+          added++;
+        }
+        if (added === 0) return null;
+        if (rowEls.length > maxRows) lines.push(`  …(+${rowEls.length - maxRows} baris lagi)`);
+        return lines.join('\n');
       }
 
-      // Tab aktif (executive / outlet / produk / dst.)
+      const tableDumps = [];
+      for (const [label, sel, maxRows, maxCols] of tableSpecs) {
+        const dump = dumpTable(label, sel, maxRows, maxCols);
+        if (dump) tableDumps.push(dump);
+      }
+      if (tableDumps.length) {
+        lines.push('\n=== Data tabel dari semua tab ===\n' + tableDumps.join('\n\n'));
+      } else {
+        lines.push('\n(Belum ada tabel ke-load. AI: jangan tebak nama toko/SKU — bilang user untuk load data dulu.)');
+      }
+
+      // Tab aktif
       const activeTab = document.querySelector('.tab.active, .tab-active, [data-tab].active');
       if (activeTab) {
         const tabName = activeTab.dataset.tab || activeTab.textContent || '';
-        if (tabName) lines.push(`Tab aktif: ${tabName.trim().replace(/\s+/g, ' ').slice(0, 40)}`);
+        if (tabName) lines.push(`\nTab yang lagi user lihat: ${tabName.trim().replace(/\s+/g, ' ').slice(0, 40)}`);
       }
     } catch (e) {
       lines.push('(gagal baca state dashboard: ' + (e && e.message || e) + ')');

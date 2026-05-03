@@ -500,28 +500,26 @@ table.data tfoot td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Refresh button: while loading, hide the refresh arrows and show a round
-   bright spinner. Bigger + high-contrast yellow to pop against dark header. */
-.header .btn-ghost.loading svg { display: none; }
-.header .btn-ghost.loading::before {
-  content: '';
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2.5px solid rgba(255,255,255,0.35);
-  border-top-color: #FACC15;
-  border-right-color: #FACC15;
-  border-radius: 50%;
+/* Refresh button while loading: spin the existing refresh-arrow logo + tint
+   it yellow + change label to "Memuat…" (handled in JS). Subtle pulse on the
+   yellow tint so the eye picks it up. */
+.header .btn-ghost.loading svg {
   animation: spin 0.7s linear infinite;
-  vertical-align: -3px;
-  margin-right: 6px;
-  box-shadow: 0 0 6px rgba(250,204,21,0.5);
+  transform-origin: 50% 50%;
+  color: #FACC15;
+  filter: drop-shadow(0 0 3px rgba(250,204,21,0.6));
 }
 .header .btn-ghost.loading,
 .header .btn-ghost.loading:hover {
   color: #FACC15;
   background: rgba(250,204,21,0.15);
   border-color: rgba(250,204,21,0.4);
+}
+@keyframes labelPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.65; } }
+.header .btn-ghost.loading #btnRefreshLabel {
+  animation: labelPulse 1.2s ease-in-out infinite;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 /* Top progress bar — full width animated stripe at top of page during load.
@@ -646,7 +644,7 @@ table.data tfoot td {
     <div class="header-right">
       <button class="btn-ghost" id="btnRefresh" title="Refresh data">
         <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 0 1-10.38 2.5M2.5 8a5.5 5.5 0 0 1 10.38-2.5"/><path d="M13.5 3v3.5H10M2.5 13v-3.5H6" stroke-linejoin="round"/></svg>
-        Refresh
+        <span id="btnRefreshLabel">Refresh</span>
       </button>
       <span class="pill">Last Update: <strong id="lastUpdate">—</strong></span>
     </div>
@@ -1060,7 +1058,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.46';
+const APP_VERSION = 'v1.47';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3739,6 +3737,8 @@ async function refresh({ reloadData = true } = {}) {
   try {
     btn.disabled = true;
     btn.classList.add('loading');
+    const lbl = document.getElementById('btnRefreshLabel');
+    if (lbl) lbl.textContent = 'Memuat…';
     document.getElementById('topProgress')?.classList.add('active');
     document.getElementById('globalError').style.display = 'none';
     if (reloadData) {
@@ -3790,6 +3790,8 @@ async function refresh({ reloadData = true } = {}) {
   } finally {
     btn.disabled = false;
     btn.classList.remove('loading');
+    const lbl = document.getElementById('btnRefreshLabel');
+    if (lbl) lbl.textContent = 'Refresh';
     document.getElementById('topProgress')?.classList.remove('active');
     loadProgress._subs.delete(progressHandler);
   }

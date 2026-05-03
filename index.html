@@ -454,11 +454,11 @@ table.data td.center { text-align: center; font-variant-numeric: tabular-nums; }
 table.data td.muted { color: var(--fg-muted); }
 table.data td.strong { font-weight: 500; color: var(--fg); }
 table.data tbody tr:hover { background: var(--muted); }
-/* Drill-down detail row: keep dark bg on hover. Use direct-child selector
-   so the inline-styled cells inside the NESTED breakdown table (yellow %,
-   green Revenue) keep their colors instead of being overridden to white. */
-table.data tbody tr.produk-detail-row:hover { background: #002A3A !important; }
-table.data tbody tr.produk-detail-row:hover > td { background: #002A3A !important; }
+/* Drill-down detail row: light bg on hover (matches the light theme inside).
+   Direct-child selector keeps inline cell colors inside the nested breakdown
+   table from being overridden. */
+table.data tbody tr.produk-detail-row:hover { background: #f6f7f9 !important; }
+table.data tbody tr.produk-detail-row:hover > td { background: #f6f7f9 !important; }
 table.data tfoot tr {
   background: linear-gradient(90deg, var(--gold-soft), var(--muted));
   border-top: 2px solid var(--gold);
@@ -1069,7 +1069,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.53';
+const APP_VERSION = 'v1.54';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1923,29 +1923,29 @@ function renderProdukTopTable(data) {
       const sizes = (r.sizes || []).slice().sort((a,b) => (b.pairs||0) - (a.pairs||0));
       const totalPairs = sizes.reduce((s,x) => s + (Number(x.pairs)||0), 0) || 1;
       const maxPairs = sizes.reduce((m,s) => Math.max(m, s.pairs||0), 0) || 1;
-      rows.push(`<tr class="produk-detail-row"><td colspan="4" style="padding:0;background:#002A3A;color:#fff;">
+      rows.push(`<tr class="produk-detail-row"><td colspan="4" style="padding:0;background:#f6f7f9;color:#002A3A;">
         <div style="padding:8px 14px 10px 44px;">
-          <div style="display:inline-block;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;padding:3px 0;">Breakdown per Kode Barang (${sizes.length} size)</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px;color:#fff;">
+          <div style="display:inline-block;font-size:10px;font-weight:700;color:#002A3A;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;padding:3px 0;">Breakdown per Kode Barang (${sizes.length} size)</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;color:#002A3A;background:#fff;">
             <thead><tr style="background:#FACC15;">
-              <th style="text-align:left;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Kode Barang</th>
-              <th style="text-align:center;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Size</th>
-              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
-              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">%</th>
-              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
-              <th style="text-align:left;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
+              <th style="text-align:left;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Kode Barang</th>
+              <th style="text-align:center;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Size</th>
+              <th style="text-align:right;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
+              <th style="text-align:right;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">%</th>
+              <th style="text-align:right;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
+              <th style="text-align:left;padding:5px 6px;color:#002A3A;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
             </tr></thead>
             <tbody>
               ${sizes.map(s => {
                 const p = Number(s.pairs)||0, rev = Number(s.revenue)||0;
                 const pctTotal = p/totalPairs*100;
                 const barPct = p/maxPairs*100;
-                return `<tr>
-                  <td style="padding:4px 6px;font-family:ui-monospace,monospace;font-size:11px;color:#fff;">${escapeHtml(s.kode_besar||'-')}</td>
-                  <td style="padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums;color:#fff;">${escapeHtml(String(s.size||'-'))}</td>
-                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#fff;">${fmtNum(p)}</td>
-                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#FACC15;font-weight:600;">${pctTotal.toFixed(1)}%</td>
-                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#00E273;">${fmtRpShort(rev)}</td>
+                return `<tr style="border-bottom:1px solid #e5e7eb;">
+                  <td style="padding:4px 6px;font-family:ui-monospace,monospace;font-size:11px;color:#002A3A;">${escapeHtml(s.kode_besar||'-')}</td>
+                  <td style="padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums;color:#002A3A;">${escapeHtml(String(s.size||'-'))}</td>
+                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#002A3A;">${fmtNum(p)}</td>
+                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#1f2937;font-weight:700;">${pctTotal.toFixed(1)}%</td>
+                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#00c463;">${fmtRpShort(rev)}</td>
                   <td style="padding:4px 6px;"><div style="height:4px;background:#00E273;width:${barPct}%;border-radius:1px;"></div></td>
                 </tr>`;
               }).join('')}

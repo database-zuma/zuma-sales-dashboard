@@ -4,7 +4,7 @@
 //   - API (/api/*)               → stale-while-revalidate (instant + auto-update)
 //
 // Cache busts on VERSION bump. Update VERSION on every dashboard release.
-const VERSION = 'v1.41';
+const VERSION = 'v1.42';
 const STATIC_CACHE = `zuma-static-${VERSION}`;
 const API_CACHE    = `zuma-api-${VERSION}`;
 

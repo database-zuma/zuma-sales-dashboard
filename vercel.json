@@ -2,6 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["sin1"],
   "rewrites": [
-    { "source": "/api/((?!chat$).*)", "destination": "/api/[...path]" }
+    { "source": "/api/((?!chat$|cron/).*)", "destination": "/api/[...path]" }
+  ],
+  "crons": [
+    { "path": "/api/cron/warm-cache", "schedule": "0 1 * * *" }
   ]
 }

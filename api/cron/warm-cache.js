@@ -11,7 +11,6 @@
 // in cache it stays for 24h via the date-aware Cache-Control in [...path].js.
 
 export const config = {
-  runtime: 'nodejs',
   maxDuration: 300,
 };
 

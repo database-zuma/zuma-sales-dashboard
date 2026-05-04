@@ -13,8 +13,9 @@
 //   - Current-year / today: 5 min cache + stale-while-revalidate so iSeller
 //     uploads land in the dashboard within a few minutes.
 
+// Default runtime is Node.js (Fluid Compute) — don't specify `runtime`.
+// `runtime: 'nodejs'` is not a valid value and triggers FUNCTION_INVOCATION_FAILED.
 export const config = {
-  runtime: 'nodejs',
   maxDuration: 60,
 };
 

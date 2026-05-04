@@ -1,32 +1,37 @@
 // Pre-warms the Vercel edge cache for the dashboard's most common queries
-// so users never hit the 12s cold path. Trigger options:
-//   1) Vercel cron (vercel.json `crons`) — Pro plan only
+// so users never hit the 30-60s cold path. Trigger options:
+//   1) Vercel cron (vercel.json `crons`)
 //   2) External cron service (cron-job.org / cronhub) — free
 //   3) VPS cron — `curl https://zuma-api-proxy.vercel.app/api/cron/warm-cache`
 //
-// What it does:
-//   For each channel in [global, retail, online, consig, wholesale, event],
-//   GET /api/sales/dashboard?channel=X&from=YEAR_START&to=TODAY&sku_only=true
-//   through the public proxy URL so the response lands in Vercel edge cache.
-// Returns a JSON summary of timings.
+// What it warms (per channel × per range, sku_only=true):
+//   - Current year: YEAR_START → TODAY (the dashboard's default)
+//   - Previous year: YEAR_START_PREV → DEC_31_PREV (full historical year)
+// Last year's URL is the one that 504'd because nothing was warming it; once
+// in cache it stays for 24h via the date-aware Cache-Control in [...path].js.
 
-export const config = { runtime: 'edge' };
+export const config = {
+  runtime: 'nodejs',
+  maxDuration: 300,
+};
 
 const CHANNELS = ['global', 'retail', 'online', 'consig', 'wholesale', 'event'];
 const API_KEY = '97d25067-a2ca-44ba-ac5b-61539b627271';
 
-function todayWIB() {
-  // Convert UTC → Jakarta (UTC+7) so the date matches what the dashboard uses.
-  const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  return now.toISOString().slice(0, 10);
+function nowWIB() {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000);
 }
-function yearStart() {
-  const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  return `${now.getUTCFullYear()}-01-01`;
+function todayStr() {
+  return nowWIB().toISOString().slice(0, 10);
+}
+function yearStart(year) {
+  return `${year}-01-01`;
+}
+function yearEnd(year) {
+  return `${year}-12-31`;
 }
 
 export default async function handler(req) {
-  // Optional auth: if CRON_SECRET is set, require it via ?secret= or header.
   const secret = process.env['CRON_SECRET'];
   if (secret) {
     const url = new URL(req.url);
@@ -39,28 +44,50 @@ export default async function handler(req) {
     }
   }
 
-  const from = yearStart();
-  const to = todayWIB();
+  const today = todayStr();
+  const currentYear = nowWIB().getUTCFullYear();
+  const prevYear = currentYear - 1;
   const origin = new URL(req.url).origin;
 
-  const results = await Promise.all(
-    CHANNELS.map(async (channel) => {
-      const target = `${origin}/api/sales/dashboard?channel=${channel}&from=${from}&to=${to}&sku_only=true`;
-      const t0 = Date.now();
-      try {
-        const r = await fetch(target, { headers: { 'X-API-Key': API_KEY } });
-        const ms = Date.now() - t0;
-        // Read body to make sure the edge actually fetches+stores (and to release the connection).
-        await r.arrayBuffer();
-        return { channel, status: r.status, ms, cache: r.headers.get('x-vercel-cache') || 'unknown' };
-      } catch (e) {
-        return { channel, status: 0, ms: Date.now() - t0, error: String(e && e.message || e) };
-      }
-    }),
-  );
+  const ranges = [
+    { label: 'current_ytd', from: yearStart(currentYear), to: today },
+    { label: `${prevYear}_full`, from: yearStart(prevYear), to: yearEnd(prevYear) },
+  ];
 
+  const tasks = [];
+  for (const range of ranges) {
+    for (const channel of CHANNELS) {
+      tasks.push(
+        (async () => {
+          const target = `${origin}/api/sales/dashboard?channel=${channel}&from=${range.from}&to=${range.to}&sku_only=true`;
+          const t0 = Date.now();
+          try {
+            const r = await fetch(target, { headers: { 'X-API-Key': API_KEY } });
+            await r.arrayBuffer();
+            return {
+              range: range.label,
+              channel,
+              status: r.status,
+              ms: Date.now() - t0,
+              cache: r.headers.get('x-vercel-cache') || 'unknown',
+            };
+          } catch (e) {
+            return {
+              range: range.label,
+              channel,
+              status: 0,
+              ms: Date.now() - t0,
+              error: String(e?.message || e),
+            };
+          }
+        })(),
+      );
+    }
+  }
+
+  const results = await Promise.all(tasks);
   return new Response(
-    JSON.stringify({ ok: true, ts: new Date().toISOString(), from, to, results }, null, 2),
+    JSON.stringify({ ok: true, ts: new Date().toISOString(), today, results }, null, 2),
     {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },

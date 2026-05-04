@@ -531,33 +531,45 @@ table.data tfoot td {
 }
 
 /* Top progress bar — full width animated stripe at top of page during load.
-   Highly visible without being intrusive (YouTube / Vercel / iSeller pattern). */
+   Uses `transform: translateX()` on a pseudo-element so the animation runs on
+   the GPU compositor thread, not the main thread. That means the bar keeps
+   sliding even while JS is busy filtering / rendering big tables — which is
+   exactly when users need to see "yes, something is loading". */
 #topProgress {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: 3px;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0s;
+}
+#topProgress::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 40%;
+  height: 100%;
   background: linear-gradient(90deg,
     transparent 0%,
     #38BDF8 20%,
     #00E273 50%,
     #38BDF8 80%,
     transparent 100%);
-  background-size: 200% 100%;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0;
-  /* Instant fade-in (so it's visible the same frame it gets activated),
-     slow fade-out (so the eye notices it disappear). */
-  transition: opacity 0s;
+  transform: translateX(-100%);
+  will-change: transform;
 }
 #topProgress.active {
   opacity: 1;
-  animation: topProgressSlide 1.0s linear infinite;
   transition: opacity 0s;
 }
+#topProgress.active::before {
+  animation: topProgressSlide 1.0s linear infinite;
+}
 @keyframes topProgressSlide {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
 }
 
 .empty {
@@ -1069,7 +1081,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.63';
+const APP_VERSION = 'v1.64';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

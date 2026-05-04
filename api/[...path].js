@@ -13,11 +13,11 @@
 //   - Current-year / today: 5 min cache + stale-while-revalidate so iSeller
 //     uploads land in the dashboard within a few minutes.
 
-// Default runtime is Node.js (Fluid Compute) — don't specify `runtime`.
-// `runtime: 'nodejs'` is not a valid value and triggers FUNCTION_INVOCATION_FAILED.
-export const config = {
-  maxDuration: 60,
-};
+// Edge runtime — Web standard Request/Response API matches our handler.
+// Edge gives ~30s wall-clock; we abort upstream at 25s and return a clean 504
+// so users get a clear error instead of FUNCTION_INVOCATION_FAILED. Cold-path
+// full-year queries are kept warm by api/cron/warm-cache.js.
+export const config = { runtime: 'edge' };
 
 const VPS_BASE = 'https://srv1346756.hstgr.cloud';
 const ALLOWED_ORIGINS = [
@@ -68,9 +68,9 @@ export default async function handler(req) {
   if (apiKey) upstreamHeaders['X-API-Key'] = apiKey;
   upstreamHeaders['Accept-Encoding'] = 'gzip';
 
-  // Hard cap fetch at 55s so we can return a clean 504 before Vercel kills us at 60s.
+  // Hard cap fetch at 25s so we can return a clean 504 before Edge's ~30s limit.
   const ac = new AbortController();
-  const abortTimer = setTimeout(() => ac.abort(), 55_000);
+  const abortTimer = setTimeout(() => ac.abort(), 25_000);
 
   let upstream;
   try {

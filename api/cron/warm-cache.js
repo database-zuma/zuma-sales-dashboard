@@ -10,9 +10,7 @@
 // Last year's URL is the one that 504'd because nothing was warming it; once
 // in cache it stays for 24h via the date-aware Cache-Control in [...path].js.
 
-export const config = {
-  maxDuration: 300,
-};
+export const config = { runtime: 'edge' };
 
 const CHANNELS = ['global', 'retail', 'online', 'consig', 'wholesale', 'event'];
 const API_KEY = '97d25067-a2ca-44ba-ac5b-61539b627271';

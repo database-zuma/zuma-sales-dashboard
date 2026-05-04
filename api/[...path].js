@@ -63,11 +63,12 @@ export default async function handler(req) {
   };
 
   if (req.method === 'GET' && upstream.ok) {
-    // Edge caches for 1h, browser revalidates after 2 min, serve stale up to 4h.
-    // VPS cold path is ~12s on YTD queries; aggressive edge caching means only
-    // the first request per (URL, hour) eats that cost — every other user gets
-    // sub-200ms. Sales data is batch-synced overnight so 1h staleness is fine.
-    responseHeaders['Cache-Control'] = 'public, max-age=120, s-maxage=3600, stale-while-revalidate=14400';
+    // Edge caches fresh for 5 min, browser revalidates after 1 min, serve stale
+    // up to 4h while bg-refreshing. With 5+ active users, stale-while-revalidate
+    // keeps the cache warm organically: first request after the 5-min mark gets
+    // a stale-but-instant response while a background fetch lands fresh data
+    // for the next user. Worst case "upload → see on dashboard" delay = 5 min.
+    responseHeaders['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=14400';
   } else {
     responseHeaders['Cache-Control'] = 'no-store';
   }

@@ -2,6 +2,7 @@
 // Forwards browser requests to the FastAPI backend on Hostinger VPS,
 // adds CORS for GitHub Pages origin, and caches GET responses at the
 // Vercel edge (sin1) so subsequent hits skip the VPS roundtrip entirely.
+// cache-bust marker: 2026-05-04T03:18 — restore Mei 3 data after sync fix
 
 export const config = { runtime: 'edge' };
 

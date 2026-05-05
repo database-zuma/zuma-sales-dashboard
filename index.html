@@ -697,7 +697,7 @@ table.data tfoot td {
       </select>
     </div>
     <div class="filter-group flex" id="fgArea">
-      <label class="filter-label">Area</label>
+      <label class="filter-label" id="msAreaLabel">Area</label>
       <div class="msx" id="msArea"></div>
     </div>
     <div class="filter-group flex">
@@ -1083,7 +1083,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.70';
+const APP_VERSION = 'v1.71';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1249,11 +1249,16 @@ const firstOfYear = () => new Date().getFullYear() + '-01-01';
 function entityLabel(channel) {
   switch (channel) {
     case 'online': return 'Marketplace';
-    case 'consig': return 'Partner';
+    case 'consig': return 'Toko';
     case 'wholesale': return 'Customer';
     case 'global': return 'Channel';
     default: return 'Toko';
   }
+}
+
+// Label for the AREA dimension (consig: Partner group; else: Area/Branch)
+function areaLabel(channel) {
+  return channel === 'consig' ? 'Partner' : 'Area';
 }
 
 // Label for the FILTER dropdown (always "Toko" level, never "Channel" to avoid confusion)
@@ -1397,6 +1402,9 @@ function applyReferenceOptions() {
   }
   const label = document.getElementById('msStoreLabel');
   if (label) label.textContent = filterEntityLabel(state.channel);
+  // Area filter label swaps to "Partner" for consig channel
+  const areaLbl = document.getElementById('msAreaLabel');
+  if (areaLbl) areaLbl.textContent = areaLabel(state.channel);
   // Event channel has no meaningful area — hide the area filter entirely.
   const areaGroup = document.getElementById('fgArea');
   if (areaGroup) areaGroup.style.display = state.channel === 'event' ? 'none' : '';
@@ -1621,7 +1629,7 @@ function renderContribChart(data) {
   const total = items.reduce((s, v) => s + v.revenue, 0) || 1;
   const palette = ['#00E273', '#002A3A', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#10b981', '#f43f5e', '#64748b'];
 
-  document.getElementById('contribTitle').textContent = useChannel ? 'Contribution by Channel' : 'Contribution by Area';
+  document.getElementById('contribTitle').textContent = useChannel ? 'Contribution by Channel' : `Contribution by ${areaLabel(channel)}`;
 
   const ctx = document.getElementById('chartContrib').getContext('2d');
   if (chartContribInstance) chartContribInstance.destroy();
@@ -1654,7 +1662,7 @@ function renderContribChart(data) {
   const html = `<table class="data" style="border-top:1px solid var(--border-soft);">
     <thead><tr>
       <th style="width:12px;"></th>
-      <th>${useChannel ? 'Channel' : 'Area'}</th>
+      <th>${useChannel ? 'Channel' : areaLabel(channel)}</th>
       <th class="right">Revenue</th>
       <th class="right">Share</th>
     </tr></thead>
@@ -1776,7 +1784,7 @@ function renderPerformanceTable(data) {
 }
 
 function exportCsv(list, label, xlsx) {
-  const header = ['#', label, 'Area', 'Qty', 'Revenue', 'Txn', 'UPT', 'ASP', 'ATV'];
+  const header = ['#', label, areaLabel(state.channel), 'Qty', 'Revenue', 'Txn', 'UPT', 'ASP', 'ATV'];
   const lines = [header.join(',')];
   list.forEach((r, i) => {
     lines.push([i+1, `"${r.entity}"`, `"${r.area}"`, r.qty, r.revenue, r.trx, r.upt.toFixed(2), r.asp.toFixed(0), r.atv.toFixed(0)].join(','));
@@ -1803,7 +1811,7 @@ function renderOutlet(data) {
   const head = `
     <th class="center" style="width:30px;">#</th>
     <th>${label}</th>
-    <th>Area</th>
+    <th>${areaLabel(state.channel)}</th>
     <th>Channel</th>
     <th class="right">Pairs</th>
     <th class="right">Revenue</th>
@@ -1873,7 +1881,7 @@ function renderOutlet(data) {
   }
 
   document.getElementById('btnOutletCsv').onclick = () => {
-    const header = ['#','Name','Area','Channel','Pairs','Revenue','Transactions'];
+    const header = ['#','Name',areaLabel(state.channel),'Channel','Pairs','Revenue','Transactions'];
     const lines = [header.join(',')];
     entities.forEach((r, i) => lines.push([i+1, `"${r.name||''}"`, `"${r.area||''}"`, `"${r.channel||''}"`, r.pairs||0, r.revenue||0, r.transactions||0].join(',')));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -1913,7 +1921,7 @@ function renderOutlet(data) {
 
   const totalAreaRev = areas.reduce((s,a) => s + (a.revenue||0), 0) || 1;
   document.getElementById('outletAreaTable').innerHTML = `<table class="data" style="border-top:1px solid var(--border-soft);">
-    <thead><tr><th>Area</th><th class="right">Revenue</th><th class="right">Share</th></tr></thead>
+    <thead><tr><th>${areaLabel(state.channel)}</th><th class="right">Revenue</th><th class="right">Share</th></tr></thead>
     <tbody>${areas.map(a => `<tr><td class="strong">${escapeHtml(a.name)}</td><td class="right">${fmtRpShort(a.revenue)}</td><td class="right muted">${((a.revenue||0)/totalAreaRev*100).toFixed(1)}%</td></tr>`).join('')}</tbody>
   </table>`;
 }
@@ -2737,7 +2745,7 @@ async function renderGrowth() {
       </div>`;
     };
 
-    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
+    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Toko' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
 
     const modeBtnStyle = (active) => `padding:6px 14px;border:1px solid ${active?'#002A3A':'var(--border)'};background:${active?'#002A3A':'#fff'};color:${active?'#fff':'#475569'};font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;`;
     wrap.innerHTML = `
@@ -2983,7 +2991,7 @@ async function renderTarget() {
     const behind  = tracked.filter(r => r.pct < 80 && r.target > 0).length;
 
     const chLabel = { retail: 'Retail', online: 'Online', consig: 'Consig', wholesale: 'Wholesale' }[state.channel] || state.channel;
-    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
+    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Toko' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
 
     // Split tracked stores into Achieved (≥100%) vs Not-yet-achieved (<100%).
     // Kiri = sudah achieve, kanan = belum achieve. Untracked dipindah ke section kecil di bawah.
@@ -3073,7 +3081,7 @@ async function renderTarget() {
             <thead><tr>
               <th class="center" style="width:30px;">#</th>
               <th>${nameLabel}</th>
-              <th>Area</th>
+              <th>${areaLabel(state.channel)}</th>
               <th class="right">Target</th>
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
@@ -3096,7 +3104,7 @@ async function renderTarget() {
             <thead><tr>
               <th class="center" style="width:30px;">#</th>
               <th>${nameLabel}</th>
-              <th>Area</th>
+              <th>${areaLabel(state.channel)}</th>
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
             </tr></thead>
@@ -3213,7 +3221,7 @@ async function renderTargetMatrix() {
     };
 
     // Head
-    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Partner' : state.channel === 'wholesale' ? 'Customer' : 'Store';
+    const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Toko' : state.channel === 'wholesale' ? 'Customer' : 'Store';
     const stickyHeadCss = 'position:sticky;top:0;background:#002A3A;color:#fff;z-index:3;';
     const stickyFirstCss = 'position:sticky;left:0;background:#fff;color:#1f2937;z-index:2;';
     const stickyCornerCss = 'position:sticky;left:0;top:0;background:#002A3A;color:#fff;z-index:4;';
@@ -3223,7 +3231,7 @@ async function renderTargetMatrix() {
       <tr>
         <th class="center" style="${stickyCornerCss};width:36px;">#</th>
         <th style="${stickyCornerCss};left:36px;min-width:220px;">${nameLabel}</th>
-        <th style="${stickyCornerCss};left:256px;min-width:90px;">Area</th>
+        <th style="${stickyCornerCss};left:256px;min-width:90px;">${areaLabel(state.channel)}</th>
         ${months.map(m => `<th class="center" colspan="${colSpan}" style="${stickyHeadCss};">${MONTH_LABEL[m.month-1]} ${m.year}</th>`).join('')}
       </tr>`;
     const headRow2 = compact ? '' : `
@@ -3327,7 +3335,7 @@ async function renderTargetMatrix() {
     document.getElementById('mxYearEnd').onchange   = e => { matrixState.yearEnd = +e.target.value; if (matrixState.yearStart > matrixState.yearEnd) matrixState.yearStart = matrixState.yearEnd; renderTargetMatrix(); };
     document.getElementById('mxToggle').onclick     = () => { matrixState.compact = !matrixState.compact; renderTargetMatrix(); };
     document.getElementById('mxCsv').onclick = () => {
-      const header = ['#','Store','Area'];
+      const header = ['#','Store',areaLabel(state.channel)];
       months.forEach(m => {
         const label = `${MONTH_LABEL[m.month-1]}_${m.year}`;
         if (compact) header.push(`${label}_Ach%`);

@@ -1088,7 +1088,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.75';
+const APP_VERSION = 'v1.76';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1806,25 +1806,68 @@ function exportCsv(list, label, xlsx) {
 
 // ============ RENDER OUTLET ============
 let chartOutletAreaInstance = null;
-const outletState = { page: 1, pageSize: 15 };
+const outletState = { page: 1, pageSize: 15, sortField: 'revenue', sortDir: 'desc', _lastData: null, _sortWired: false };
 
 function renderOutlet(data) {
-  const entities = (data.byEntity || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
+  outletState._lastData = data;
+  // Decorate entities with derived metrics so sort by ATU/ASP/ATV works.
+  const decorated = (data.byEntity || []).map(r => {
+    const pairs = Number(r.pairs)||0, rev = Number(r.revenue)||0, trx = Number(r.transactions)||0;
+    return Object.assign({}, r, {
+      _pairs: pairs, _revenue: rev, _trx: trx,
+      _atu: trx ? pairs/trx : 0,
+      _asp: pairs ? rev/pairs : 0,
+      _atv: trx ? rev/trx : 0
+    });
+  });
+  const sf = outletState.sortField || 'revenue';
+  const dir = outletState.sortDir === 'asc' ? 1 : -1;
+  const keyMap = { pairs: '_pairs', revenue: '_revenue', transactions: '_trx', atu: '_atu', asp: '_asp', atv: '_atv' };
+  const sk = keyMap[sf] || '_revenue';
+  const entities = decorated.sort((a,b) => ((Number(a[sk])||0) - (Number(b[sk])||0)) * dir);
   const areas = (data.byArea || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
   const label = state.channel === 'global' ? 'Outlet' : entityLabel(state.channel);
 
+  // Stacked ▲▼ indicator generator
+  const DIM = '#cbd5e1', HOT = '#00E273';
+  const arrowHtml = (field) => {
+    const active = sf === field;
+    const up   = active && outletState.sortDir === 'asc'  ? HOT : DIM;
+    const down = active && outletState.sortDir === 'desc' ? HOT : DIM;
+    return '<span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;">' +
+      '<span style="color:' + up + ';">▲</span><span style="color:' + down + ';">▼</span></span>';
+  };
+  const sortableTh = (field, label) =>
+    `<th class="right" data-outlet-sort="${field}" style="cursor:pointer;user-select:none;" title="Klik untuk sort">${label}${arrowHtml(field)}</th>`;
   const head = `
     <th class="center" style="width:30px;">#</th>
     <th>${label}</th>
     <th>${areaLabel(state.channel)}</th>
     <th>Channel</th>
-    <th class="right">Pairs</th>
-    <th class="right">Revenue</th>
-    <th class="right">Txn</th>
-    <th class="right">ATU</th>
-    <th class="right">ASP</th>
-    <th class="right">ATV</th>`;
+    ${sortableTh('pairs', 'Pairs')}
+    ${sortableTh('revenue', 'Revenue')}
+    ${sortableTh('transactions', 'Txn')}
+    ${sortableTh('atu', 'ATU')}
+    ${sortableTh('asp', 'ASP')}
+    ${sortableTh('atv', 'ATV')}`;
   document.getElementById('outletHead').innerHTML = head;
+  // Wire header clicks once
+  if (!outletState._sortWired) {
+    document.getElementById('outletHead').addEventListener('click', (ev) => {
+      const th = ev.target.closest('th[data-outlet-sort]');
+      if (!th) return;
+      const field = th.getAttribute('data-outlet-sort');
+      if (outletState.sortField === field) {
+        outletState.sortDir = (outletState.sortDir === 'desc') ? 'asc' : 'desc';
+      } else {
+        outletState.sortField = field;
+        outletState.sortDir = 'desc';
+      }
+      outletState.page = 1; // reset to first page after re-sort
+      if (outletState._lastData) renderOutlet(outletState._lastData);
+    });
+    outletState._sortWired = true;
+  }
 
   const total = entities.reduce((a, c) => ({
     pairs: a.pairs + (c.pairs||0), revenue: a.revenue + (c.revenue||0), trx: a.trx + (c.transactions||0)

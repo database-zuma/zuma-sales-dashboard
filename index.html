@@ -838,9 +838,14 @@ table.data tfoot td {
   <!-- ========= TAB: PRODUK ========= -->
   <section class="tab-content" id="tab-produk">
     <!-- Row 1: Top Artikel — full width -->
-    <div class="card" style="margin-bottom:12px;"><div class="card-header"><div class="card-title">Top 20 Artikel (Kode Kecil)</div>
-      <span class="muted" style="font-size:10px;">klik baris untuk breakdown per size</span></div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto;">
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div class="card-title">Semua Artikel (Kode Kecil)</div>
+        <span class="muted" id="produkTopCount" style="font-size:10px;">—</span>
+        <input type="text" id="produkTopSearch" placeholder="Cari kode kecil / nama / gender / series…" style="margin-left:auto;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:11.5px;width:280px;font-family:inherit;" autocomplete="off">
+        <span class="muted" style="font-size:10px;">klik baris untuk breakdown per size</span>
+      </div>
+      <div class="table-wrap" style="max-height:560px;overflow:auto;">
         <table class="data" id="produkTopTable">
           <thead><tr>
             <th class="center" style="width:28px;">#</th>
@@ -1928,12 +1933,22 @@ function renderOutlet(data) {
 
 // ============ RENDER PRODUK ============
 const produkCharts = {};
-const produkState = { expandedKode: new Set() };
+const produkState = { expandedKode: new Set(), searchQ: '', _searchWired: false, _lastData: null };
 
 function renderProdukTopTable(data) {
-  const rank = (data.rankByKodeKecil || []).slice(0, 20);
+  const all = (data.rankByKodeKecil || []);
+  const q = (produkState.searchQ || '').trim().toLowerCase();
+  const rank = q ? all.filter(r => {
+    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'')).toLowerCase();
+    return hay.indexOf(q) !== -1;
+  }) : all;
   const body = document.getElementById('produkTopBody');
-  if (!rank.length) { body.innerHTML = `<tr><td colspan="4" class="empty" style="border:none;padding:28px;">—</td></tr>`; return; }
+  const countEl = document.getElementById('produkTopCount');
+  if (countEl) countEl.textContent = q ? `${rank.length.toLocaleString('id-ID')} dari ${all.length.toLocaleString('id-ID')} artikel` : `${all.length.toLocaleString('id-ID')} artikel`;
+  if (!rank.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty" style="border:none;padding:28px;">${q ? 'Tidak ada artikel yang cocok dengan pencarian.' : '—'}</td></tr>`;
+    return;
+  }
   const rows = [];
   rank.forEach((r, i) => {
     const kk = r.kode_kecil || '-';
@@ -1998,6 +2013,22 @@ function renderProdukTopTable(data) {
       renderProdukTopTable(data);
     };
   });
+  // Wire search input once — debounced refilter
+  produkState._lastData = data;
+  if (!produkState._searchWired) {
+    const inp = document.getElementById('produkTopSearch');
+    if (inp) {
+      let t = null;
+      inp.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(() => {
+          produkState.searchQ = inp.value || '';
+          if (produkState._lastData) renderProdukTopTable(produkState._lastData);
+        }, 120);
+      });
+      produkState._searchWired = true;
+    }
+  }
 }
 
 function renderProduk(data) {

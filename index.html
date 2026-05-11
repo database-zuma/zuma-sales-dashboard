@@ -850,8 +850,8 @@ table.data tfoot td {
           <thead><tr>
             <th class="center" style="width:28px;">#</th>
             <th>Artikel · Kode Kecil</th>
-            <th class="right">Pairs</th>
-            <th class="right">Revenue</th>
+            <th class="right" id="produkTopSortPairs" data-sort="pairs" style="cursor:pointer;user-select:none;" title="Klik untuk sort">Pairs <span class="sort-ind">▼</span></th>
+            <th class="right" id="produkTopSortRev" data-sort="revenue" style="cursor:pointer;user-select:none;" title="Klik untuk sort">Revenue <span class="sort-ind"></span></th>
           </tr></thead>
           <tbody id="produkTopBody"><tr><td colspan="4" class="loading">—</td></tr></tbody>
         </table>
@@ -1088,7 +1088,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.72';
+const APP_VERSION = 'v1.73';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1933,15 +1933,24 @@ function renderOutlet(data) {
 
 // ============ RENDER PRODUK ============
 const produkCharts = {};
-const produkState = { expandedKode: new Set(), searchQ: '', _searchWired: false, _lastData: null };
+const produkState = { expandedKode: new Set(), searchQ: '', _searchWired: false, _lastData: null, sortField: 'pairs', sortDir: 'desc' };
 
 function renderProdukTopTable(data) {
   const all = (data.rankByKodeKecil || []);
   const q = (produkState.searchQ || '').trim().toLowerCase();
-  const rank = q ? all.filter(r => {
+  let rank = q ? all.filter(r => {
     const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'')).toLowerCase();
     return hay.indexOf(q) !== -1;
-  }) : all;
+  }) : all.slice();
+  // Sort by selected field (clicked header) — pairs or revenue, asc or desc.
+  const sf = produkState.sortField || 'pairs';
+  const dir = produkState.sortDir === 'asc' ? 1 : -1;
+  rank.sort((a, b) => ((Number(a[sf])||0) - (Number(b[sf])||0)) * dir);
+  // Update sort indicator arrows on headers
+  const indPairs = document.querySelector('#produkTopSortPairs .sort-ind');
+  const indRev   = document.querySelector('#produkTopSortRev .sort-ind');
+  if (indPairs) indPairs.textContent = sf === 'pairs'   ? (produkState.sortDir === 'asc' ? '▲' : '▼') : '';
+  if (indRev)   indRev.textContent   = sf === 'revenue' ? (produkState.sortDir === 'asc' ? '▲' : '▼') : '';
   const body = document.getElementById('produkTopBody');
   const countEl = document.getElementById('produkTopCount');
   if (countEl) countEl.textContent = q ? `${rank.length.toLocaleString('id-ID')} dari ${all.length.toLocaleString('id-ID')} artikel` : `${all.length.toLocaleString('id-ID')} artikel`;
@@ -2013,7 +2022,7 @@ function renderProdukTopTable(data) {
       renderProdukTopTable(data);
     };
   });
-  // Wire search input once — debounced refilter
+  // Wire search input + sort headers once
   produkState._lastData = data;
   if (!produkState._searchWired) {
     const inp = document.getElementById('produkTopSearch');
@@ -2026,8 +2035,20 @@ function renderProdukTopTable(data) {
           if (produkState._lastData) renderProdukTopTable(produkState._lastData);
         }, 120);
       });
-      produkState._searchWired = true;
     }
+    document.querySelectorAll('#produkTopTable th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.getAttribute('data-sort');
+        if (produkState.sortField === field) {
+          produkState.sortDir = (produkState.sortDir === 'desc') ? 'asc' : 'desc';
+        } else {
+          produkState.sortField = field;
+          produkState.sortDir = 'desc'; // new column starts desc
+        }
+        if (produkState._lastData) renderProdukTopTable(produkState._lastData);
+      });
+    });
+    produkState._searchWired = true;
   }
 }
 

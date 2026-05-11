@@ -850,8 +850,8 @@ table.data tfoot td {
           <thead><tr>
             <th class="center" style="width:28px;">#</th>
             <th>Artikel · Kode Kecil</th>
-            <th class="right" id="produkTopSortPairs" data-sort="pairs" style="cursor:pointer;user-select:none;" title="Klik untuk sort Pairs">Pairs <span class="sort-ind" style="color:#00E273;font-size:10px;margin-left:4px;">▼</span></th>
-            <th class="right" id="produkTopSortRev" data-sort="revenue" style="cursor:pointer;user-select:none;" title="Klik untuk sort Revenue">Revenue <span class="sort-ind" style="color:#9ca3af;font-size:10px;margin-left:4px;opacity:0.7;">⇅</span></th>
+            <th class="right" id="produkTopSortPairs" data-sort="pairs" style="cursor:pointer;user-select:none;" title="Klik untuk sort Pairs">Pairs <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#00E273;">▼</span></span></span></th>
+            <th class="right" id="produkTopSortRev" data-sort="revenue" style="cursor:pointer;user-select:none;" title="Klik untuk sort Revenue">Revenue <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#cbd5e1;">▼</span></span></span></th>
           </tr></thead>
           <tbody id="produkTopBody"><tr><td colspan="4" class="loading">—</td></tr></tbody>
         </table>
@@ -1088,7 +1088,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.74';
+const APP_VERSION = 'v1.75';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1946,17 +1946,20 @@ function renderProdukTopTable(data) {
   const sf = produkState.sortField || 'pairs';
   const dir = produkState.sortDir === 'asc' ? 1 : -1;
   rank.sort((a, b) => ((Number(a[sf])||0) - (Number(b[sf])||0)) * dir);
-  // Update sort indicator arrows on headers — selalu tampil ▼ di dua-duanya,
-  // tapi yang aktif diberi warna kontras + arah sesuai dir.
+  // Update sort indicator — selalu tampil dua arrow ▲▼ di tiap kolom,
+  // yang aktif (sesuai dir) di-highlight hijau, yang non-aktif dim abu-abu.
+  const DIM = '#cbd5e1';   // light gray
+  const HOT = '#00E273';   // active green
   const setInd = (el, field) => {
     if (!el) return;
     const active = sf === field;
-    const arrow = active ? (produkState.sortDir === 'asc' ? '▲' : '▼') : '⇅';
-    el.textContent = arrow;
-    el.style.color = active ? '#00E273' : '#9ca3af';
-    el.style.fontSize = '10px';
-    el.style.marginLeft = '4px';
-    el.style.opacity = active ? '1' : '0.7';
+    const up   = active && produkState.sortDir === 'asc'  ? HOT : DIM;
+    const down = active && produkState.sortDir === 'desc' ? HOT : DIM;
+    el.innerHTML =
+      '<span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;">' +
+        '<span style="color:' + up   + ';">▲</span>' +
+        '<span style="color:' + down + ';">▼</span>' +
+      '</span>';
   };
   setInd(document.querySelector('#produkTopSortPairs .sort-ind'), 'pairs');
   setInd(document.querySelector('#produkTopSortRev   .sort-ind'), 'revenue');

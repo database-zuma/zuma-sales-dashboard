@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.85';
+const APP_VERSION = 'v1.86';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4343,6 +4343,7 @@ function renderActiveTab(data) {
     else if (tab === 'promo') renderPromo(data);
     else if (tab === 'target') {
       if (state.targetSubtab === 'matrix') renderTargetMatrix();
+      else if (state.targetSubtab === 'quarterly') renderTargetQuarterly();
       else renderTarget();
     }
     else if (tab === 'refund') renderRefund();   // lazy fetch

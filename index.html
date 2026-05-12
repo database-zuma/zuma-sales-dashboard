@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.88';
+const APP_VERSION = 'v1.89';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3200,19 +3200,20 @@ async function renderTarget() {
       let paceCell = '', deltaRpCell = '';
       if (_showPace) {
         if (!r.target) {
-          paceCell = '<td class="center muted">—</td>';
-          deltaRpCell = '<td class="right muted">—</td>';
+          paceCell    = '<td class="center muted" style="width:110px;min-width:110px;white-space:nowrap;">—</td>';
+          deltaRpCell = '<td class="center muted" style="width:110px;min-width:110px;white-space:nowrap;">—</td>';
         } else {
           const gap = r.pct - _timePct;
           const trafficColor = gap >= 0 ? '#16a34a' : gap > -10 ? '#f59e0b' : '#dc2626';
           const arrow = gap >= 1 ? '▲' : gap <= -1 ? '▼' : '';
           const sign = gap > 0 ? '+' : '';
-          paceCell = `<td class="center" style="color:${trafficColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Pace Gap = Ach% (${r.pct.toFixed(1)}%) − Time% (${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays})">${sign}${gap.toFixed(1)} ${arrow}</td>`;
+          const cellBase = `width:110px;min-width:110px;white-space:nowrap;color:${trafficColor};font-weight:700;font-variant-numeric:tabular-nums;`;
+          paceCell = `<td class="center" style="${cellBase}" title="Pace Gap = Ach% (${r.pct.toFixed(1)}%) − Time% (${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays})">${sign}${gap.toFixed(1)} ${arrow}</td>`;
           // Δ Rp — selisih rupiah vs ekspektasi proporsional waktu
           const expectedRev = r.target * (_elapsedDays / _totalDays);
           const deltaRp = r.actualRev - expectedRev;
           const dSign = deltaRp > 0 ? '+' : '';
-          deltaRpCell = `<td class="right" style="color:${trafficColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Selisih revenue vs ekspektasi proporsional. Expected = Target ${fmtRpShort(r.target)} × ${_elapsedDays}/${_totalDays} = ${fmtRpShort(expectedRev)}. Actual = ${fmtRpShort(r.actualRev)}.">${dSign}${fmtRpShort(deltaRp)}</td>`;
+          deltaRpCell = `<td class="center" style="${cellBase}" title="Selisih revenue vs ekspektasi proporsional. Expected = Target ${fmtRpShort(r.target)} × ${_elapsedDays}/${_totalDays} = ${fmtRpShort(expectedRev)}. Actual = ${fmtRpShort(r.actualRev)}.">${dSign}${fmtRpShort(deltaRp)}</td>`;
         }
       }
       let fcCell = '';
@@ -3262,7 +3263,7 @@ async function renderTarget() {
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
               <th class="right">Achv</th>
-              ${_showPace ? `<th class="center" title="Pace Gap = Ach% − Time% (waktu lewat ${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays}). Positif = di atas pace, negatif = telat.">📈 Pace</th><th class="right" title="Δ Rupiah = Revenue − Expected. Expected = Target × ${_elapsedDays}/${_totalDays}. Positif = di atas ekspektasi, negatif = kurang.">💰 Δ Rp</th>` : ''}
+              ${_showPace ? `<th class="center" style="width:110px;min-width:110px;white-space:nowrap;" title="Pace Gap = Ach% − Time% (waktu lewat ${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays}). Positif = di atas pace, negatif = telat.">📈 Pace</th><th class="center" style="width:110px;min-width:110px;white-space:nowrap;" title="Δ Rupiah = Revenue − Expected. Expected = Target × ${_elapsedDays}/${_totalDays}. Positif = di atas ekspektasi, negatif = kurang.">💰 Δ Rp</th>` : ''}
               ${_showForecast ? '<th class="right" title="Proyeksi end-of-period berdasar pace harian">🔮 Forecast</th><th class="center" title="Projected % vs target di akhir periode">Proj %</th>' : ''}
             </tr></thead>
             <tbody>${rows || `<tr><td colspan="${7 + (_showPace?2:0) + (_showForecast?2:0)}" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>

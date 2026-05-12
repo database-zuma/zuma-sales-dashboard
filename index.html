@@ -984,12 +984,16 @@ table.data tfoot td {
     <div class="subtab-bar" style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);">
       <button class="subtab-btn active" data-subtab="current" style="padding:8px 14px;border:none;background:none;border-bottom:2px solid var(--accent);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">📊 Current Period</button>
       <button class="subtab-btn" data-subtab="matrix" style="padding:8px 14px;border:none;background:none;border-bottom:2px solid transparent;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;">📅 Monthly Trend</button>
+      <button class="subtab-btn" data-subtab="quarterly" style="padding:8px 14px;border:none;background:none;border-bottom:2px solid transparent;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;">📈 Quarterly</button>
     </div>
     <div id="targetContent">
       <div class="loading"><div class="spinner"></div>Memuat data target...</div>
     </div>
     <div id="targetMatrixContent" style="display:none;">
       <div class="loading"><div class="spinner"></div>Memuat monthly matrix...</div>
+    </div>
+    <div id="targetQuarterlyContent" style="display:none;">
+      <div class="loading"><div class="spinner"></div>Memuat quarterly chart...</div>
     </div>
   </section>
 
@@ -1088,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.79';
+const APP_VERSION = 'v1.80';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3521,6 +3525,238 @@ async function renderTargetMatrix() {
   }
 }
 
+// ============ TARGET — QUARTERLY CHART ============
+// 8 quarter (Q1-2025 → Q4-2026) grouped bar: Target vs Actual. Scope filter:
+// All (company rollup) / Per Branch / Per Toko (top 12 by total revenue).
+const quarterlyState = { scope: 'all', _chart: null };
+
+async function renderTargetQuarterly() {
+  const wrap = document.getElementById('targetQuarterlyContent');
+
+  const TARGET_CHANNELS = new Set(['retail', 'consig', 'event']);
+  if (!TARGET_CHANNELS.has(state.channel)) {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Quarterly Chart tersedia hanya untuk channel <strong>Retail</strong>, <strong>Consig</strong>, atau <strong>Event</strong>.</div>';
+    return;
+  }
+
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat quarterly data (2025-2026)…</div>';
+
+  try {
+    const qs = new URLSearchParams({ channel: state.channel, year_start: '2025', year_end: '2026', sandal_only: state.skuOnly ? '1' : '0' });
+    const data = await fetchAPI(`/api/targets/achievement-matrix?${qs.toString()}`, { group: 'target-quarterly' });
+    const entities = (data && data.entities) || [];
+
+    // Aggregate per entity into quarter buckets {Q1_2025, Q2_2025, ..., Q4_2026}
+    // monthsKey format: "YYYY_M" where M is 1..12
+    const QUARTERS = [
+      { key: 'Q1_2025', year: 2025, months: [1,2,3], label: 'Q1 2025' },
+      { key: 'Q2_2025', year: 2025, months: [4,5,6], label: 'Q2 2025' },
+      { key: 'Q3_2025', year: 2025, months: [7,8,9], label: 'Q3 2025' },
+      { key: 'Q4_2025', year: 2025, months: [10,11,12], label: 'Q4 2025' },
+      { key: 'Q1_2026', year: 2026, months: [1,2,3], label: 'Q1 2026' },
+      { key: 'Q2_2026', year: 2026, months: [4,5,6], label: 'Q2 2026' },
+      { key: 'Q3_2026', year: 2026, months: [7,8,9], label: 'Q3 2026' },
+      { key: 'Q4_2026', year: 2026, months: [10,11,12], label: 'Q4 2026' },
+    ];
+
+    // For each entity, sum monthly revenue + target into quarter buckets
+    const perEntity = entities.map(e => {
+      const buckets = {};
+      QUARTERS.forEach(q => { buckets[q.key] = { revenue: 0, target: 0 }; });
+      QUARTERS.forEach(q => {
+        q.months.forEach(m => {
+          const mk = `${q.year}_${m}`;
+          const cell = (e.months || {})[mk] || {};
+          buckets[q.key].revenue += Number(cell.revenue) || 0;
+          buckets[q.key].target  += Number(cell.target)  || 0;
+        });
+      });
+      return { name: e.name, branch: e.branch || e.area || '-', buckets,
+               totalRev: Object.values(buckets).reduce((s,b) => s + b.revenue, 0) };
+    });
+
+    // Aggregate by scope
+    function aggregateByScope(scope) {
+      if (scope === 'all') {
+        const merged = {};
+        QUARTERS.forEach(q => { merged[q.key] = { revenue: 0, target: 0 }; });
+        perEntity.forEach(e => {
+          QUARTERS.forEach(q => {
+            merged[q.key].revenue += e.buckets[q.key].revenue;
+            merged[q.key].target  += e.buckets[q.key].target;
+          });
+        });
+        return [{ name: 'All (Company)', buckets: merged }];
+      }
+      if (scope === 'branch') {
+        const byBranch = {};
+        perEntity.forEach(e => {
+          const b = e.branch || '-';
+          if (!byBranch[b]) {
+            byBranch[b] = { name: b, buckets: {} };
+            QUARTERS.forEach(q => { byBranch[b].buckets[q.key] = { revenue: 0, target: 0 }; });
+          }
+          QUARTERS.forEach(q => {
+            byBranch[b].buckets[q.key].revenue += e.buckets[q.key].revenue;
+            byBranch[b].buckets[q.key].target  += e.buckets[q.key].target;
+          });
+        });
+        return Object.values(byBranch).sort((a,b) => {
+          const ar = Object.values(a.buckets).reduce((s,x)=>s+x.revenue,0);
+          const br = Object.values(b.buckets).reduce((s,x)=>s+x.revenue,0);
+          return br - ar;
+        });
+      }
+      // scope === 'store' → top 12 by total revenue
+      return perEntity.sort((a,b) => b.totalRev - a.totalRev).slice(0, 12);
+    }
+
+    // Build UI: scope dropdown + chart canvas + summary table
+    wrap.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;flex-wrap:wrap;">
+        <strong style="color:#002A3A;">Quarterly Achievement</strong>
+        <span>·</span>
+        <span>Channel: <strong>${state.channel}</strong></span>
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+          <label style="font-size:11.5px;color:#64748b;font-weight:600;">Scope:</label>
+          <select id="qScope" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">
+            <option value="all">All (Company Rollup)</option>
+            <option value="branch">Per Branch</option>
+            <option value="store">Per Toko (Top 12)</option>
+          </select>
+        </span>
+      </div>
+      <div id="qChartContainer"></div>
+      <div id="qSummaryTable" style="margin-top:12px;"></div>
+    `;
+
+    const select = document.getElementById('qScope');
+    select.value = quarterlyState.scope;
+    select.onchange = () => { quarterlyState.scope = select.value; renderQuarterlyChart(); };
+
+    function renderQuarterlyChart() {
+      const groups = aggregateByScope(quarterlyState.scope);
+      const container = document.getElementById('qChartContainer');
+      const tableWrap = document.getElementById('qSummaryTable');
+      if (!groups.length) {
+        container.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Tidak ada data target / revenue.</div>';
+        tableWrap.innerHTML = '';
+        return;
+      }
+
+      // For multi-group (branch / store), render one chart per group stacked vertically (compact)
+      // For single (all), render one big chart
+      const isMulti = groups.length > 1;
+      const chartHeight = isMulti ? 240 : 360;
+      container.innerHTML = groups.map((g, idx) => `
+        <div class="card" style="margin-bottom:10px;">
+          <div class="card-header"><div class="card-title">${escapeHtml(titleCaseEntity(g.name))}</div>
+            <span class="muted" style="font-size:10px;">Q1'25 → Q4'26</span></div>
+          <div class="card-body" style="padding:8px 14px 14px;">
+            <div style="height:${chartHeight}px;position:relative;"><canvas id="qChart_${idx}"></canvas></div>
+          </div>
+        </div>
+      `).join('');
+
+      // Destroy prior charts
+      (quarterlyState._charts || []).forEach(c => { try { c.destroy(); } catch {} });
+      quarterlyState._charts = [];
+
+      const NAVY = '#002A3A', GREEN = '#00E273';
+      groups.forEach((g, idx) => {
+        const canvas = document.getElementById(`qChart_${idx}`);
+        if (!canvas) return;
+        const targets = QUARTERS.map(q => g.buckets[q.key].target);
+        const actuals = QUARTERS.map(q => g.buckets[q.key].revenue);
+        const labels = QUARTERS.map(q => q.label);
+        const ach = QUARTERS.map((q,i) => targets[i] > 0 ? (actuals[i]/targets[i]*100) : 0);
+        const ctx = canvas.getContext('2d');
+        const chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Target', data: targets, backgroundColor: NAVY + 'aa', borderColor: NAVY, borderWidth: 1, borderRadius: 3 },
+              { label: 'Actual', data: actuals, backgroundColor: GREEN + 'cc', borderColor: GREEN, borderWidth: 1, borderRadius: 3 },
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { font: { size: 10 } } },
+              tooltip: {
+                backgroundColor: NAVY, padding: 10, titleFont: { size: 12 }, bodyFont: { size: 11 },
+                callbacks: {
+                  label: (ctx) => {
+                    const v = ctx.parsed.y || 0;
+                    const fmt = (n) => n >= 1e9 ? (n/1e9).toFixed(2)+' M' : n >= 1e6 ? (n/1e6).toFixed(1)+' jt' : n.toLocaleString('id-ID');
+                    return `${ctx.dataset.label}: Rp ${fmt(v)}`;
+                  },
+                  afterBody: (items) => {
+                    if (!items.length) return '';
+                    const i = items[0].dataIndex;
+                    const t = targets[i], a = actuals[i];
+                    if (!t) return 'Target belum di-set';
+                    const pct = (a/t*100).toFixed(1);
+                    const gap = a - t;
+                    const fmt = (n) => n >= 1e9 ? (n/1e9).toFixed(2)+' M' : n >= 1e6 ? (n/1e6).toFixed(1)+' jt' : n.toLocaleString('id-ID');
+                    return [`Achievement: ${pct}%`, `Gap: ${gap >= 0 ? '+' : ''}Rp ${fmt(gap)}`];
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+              y: {
+                beginAtZero: true,
+                grid: { color: '#f1f5f9' },
+                ticks: { font: { size: 9 }, callback: (v) => v >= 1e9 ? (v/1e9).toFixed(1)+'M' : v >= 1e6 ? (v/1e6).toFixed(0)+'jt' : v }
+              }
+            }
+          }
+        });
+        quarterlyState._charts.push(chart);
+      });
+
+      // Summary table — quarter | target | actual | gap | ach% for current scope total
+      const totalBuckets = {};
+      QUARTERS.forEach(q => { totalBuckets[q.key] = { revenue: 0, target: 0 }; });
+      groups.forEach(g => { QUARTERS.forEach(q => { totalBuckets[q.key].revenue += g.buckets[q.key].revenue; totalBuckets[q.key].target += g.buckets[q.key].target; }); });
+      const fmtRp = (n) => n >= 1e9 ? `Rp ${(n/1e9).toFixed(2)} M` : n >= 1e6 ? `Rp ${(n/1e6).toFixed(1)} jt` : `Rp ${Math.round(n).toLocaleString('id-ID')}`;
+      tableWrap.innerHTML = `
+        <div class="card">
+          <div class="card-header"><div class="card-title">Ringkasan ${quarterlyState.scope === 'all' ? 'Company' : 'Total Scope'}</div></div>
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr>
+                <th>Quarter</th><th class="right">Target</th><th class="right">Actual</th>
+                <th class="right">Δ (Rp)</th><th class="right">Achievement</th>
+              </tr></thead>
+              <tbody>${QUARTERS.map(q => {
+                const t = totalBuckets[q.key].target, a = totalBuckets[q.key].revenue;
+                const gap = a - t;
+                const pct = t > 0 ? (a/t*100) : 0;
+                const pctColor = !t ? '#94a3b8' : pct >= 100 ? '#16a34a' : pct >= 80 ? '#f59e0b' : '#dc2626';
+                return `<tr>
+                  <td class="strong">${q.label}</td>
+                  <td class="right">${t ? fmtRp(t) : '<span class="muted">—</span>'}</td>
+                  <td class="right strong">${fmtRp(a)}</td>
+                  <td class="right" style="color:${gap >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${t ? (gap >= 0 ? '+' : '') + fmtRp(gap) : '—'}</td>
+                  <td class="right" style="color:${pctColor};font-weight:700;">${t ? pct.toFixed(1)+'%' : '—'}</td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    renderQuarterlyChart();
+
+  } catch (e) {
+    wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat quarterly: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
 // ============ REFUND (lazy fetch) ============
 async function renderRefund() {
   const wrap = document.getElementById('refundContent');
@@ -4090,13 +4326,18 @@ function setupEvents() {
       state.targetSubtab = btn.dataset.subtab;
       const current = document.getElementById('targetContent');
       const matrix = document.getElementById('targetMatrixContent');
+      const quarterly = document.getElementById('targetQuarterlyContent');
+      current.style.display = 'none';
+      matrix.style.display = 'none';
+      if (quarterly) quarterly.style.display = 'none';
       if (state.targetSubtab === 'matrix') {
-        current.style.display = 'none';
         matrix.style.display = '';
         renderTargetMatrix();
+      } else if (state.targetSubtab === 'quarterly') {
+        quarterly.style.display = '';
+        renderTargetQuarterly();
       } else {
         current.style.display = '';
-        matrix.style.display = 'none';
         if (state.rawData) renderTarget();
       }
     };

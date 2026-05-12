@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.91';
+const APP_VERSION = 'v1.92';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3903,36 +3903,19 @@ async function renderRefund() {
     //                by_area:[{area, refund_qty, refund_value}],
     //                by_article:[{article, refund_qty, refund_value}],
     //                detail:[...]}
-    // VPS backend belum honor sku_only di endpoint ini — client-side blacklist
-    // pattern untuk non-SKU items (shopbag, inbox, hanger, dll).
-    const NON_SKU_RX = /(shop\s*bag|shopping\s*bag|paper\s*bag|paperbag|shopbag|hanger|inbox|kotak\s*sepatu|dus\s*sepatu|packaging|kaos\s*kaki|accessor(y|ies)|ongkir|ongkos|delivery)/i;
-    const isNonSku = (r) => NON_SKU_RX.test(`${r.article || ''} ${r.series || ''} ${r.gender || ''}`);
-    const allArticles = data.by_article || [];
-    const nonSkuArticles = allArticles.filter(isNonSku);
-    const nonSkuQty = nonSkuArticles.reduce((s, r) => s + Number(r.refund_qty || 0), 0);
-    const nonSkuVal = nonSkuArticles.reduce((s, r) => s + Number(r.refund_value || 0), 0);
-    const byArticleRaw = sandalOnly ? allArticles.filter(r => !isNonSku(r)) : allArticles;
-    // Subtract non-SKU contrib dari summary KPI ketika sandalOnly
-    const rawSummary = data.summary || {};
-    const summary = sandalOnly
-      ? {
-          refund_qty: Math.max(0, Number(rawSummary.refund_qty || 0) - nonSkuQty),
-          refund_value: Math.max(0, Number(rawSummary.refund_value || 0) - nonSkuVal),
-        }
-      : rawSummary;
-    const byStore = (data.by_store || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
-    const bySpg   = (data.by_spg   || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
-    const byArea  = (data.by_area  || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
-    const byArticle = byArticleRaw.slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    // Backend skrg honor sku_only — semua group (summary, by_store, by_spg, by_area,
+    // by_article, detail) konsisten ter-filter sesuai toggle.
+    const summary = data.summary || {};
+    const byStore   = (data.by_store   || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const bySpg     = (data.by_spg     || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const byArea    = (data.by_area    || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+    const byArticle = (data.by_article || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
 
     const totRev = state.rawData && state.rawData.kpis ? (state.rawData.kpis.revenue || 0) : 0;
     const refundRate = totRev ? (summary.refund_value / totRev * 100) : 0;
 
-    // Cache detail untuk drill-down click — sinkron sama filter NON-SKU di tabel utama
-    const rawDetail = data.detail || [];
-    window._refundDetail = sandalOnly
-      ? rawDetail.filter(r => !NON_SKU_RX.test(`${r.article || ''} ${r.sku || ''}`))
-      : rawDetail;
+    // Cache detail untuk drill-down click — backend udah filter sesuai sku_only
+    window._refundDetail = data.detail || [];
     const rowHtml = (arr, primary, secondary, opts) => {
       const drillByToko = opts && opts.drillByToko;
       return (arr || []).slice(0, 50).map(r => {

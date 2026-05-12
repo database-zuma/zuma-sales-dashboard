@@ -1088,7 +1088,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.77';
+const APP_VERSION = 'v1.78';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3168,9 +3168,28 @@ async function renderTarget() {
     // Show Forecast/Proj columns hanya kalau periode lagi berjalan (forecast useful)
     const _showForecast = _isOngoing;
 
+    // Pace-adjusted achievement: bandingin Ach% (revenue/target) vs Time% (hari berjalan/total).
+    // Positif = ahead of pace (lagi over-achieve). Negatif = behind pace.
+    // Cuma muncul kalau periode masih ongoing — kalau periode udah kelar, pace gap tidak meaningful.
+    const _timePct = (_elapsedDays / _totalDays) * 100;
+    const _showPace = _isOngoing;
+
     const renderAchvRow = (r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
       const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
+      // Pace Gap cell — Ach% − Time%. >+5pp=ahead (hijau), −5..+5=on pace (abu), <−5pp=behind (merah).
+      let paceCell = '';
+      if (_showPace) {
+        if (!r.target) {
+          paceCell = '<td class="center muted">—</td>';
+        } else {
+          const gap = r.pct - _timePct;
+          const pColor = gap >= 5 ? '#16a34a' : gap > -5 ? '#64748b' : gap > -15 ? '#f59e0b' : '#dc2626';
+          const arrow = gap >= 1 ? '▲' : gap <= -1 ? '▼' : '';
+          const sign = gap > 0 ? '+' : '';
+          paceCell = `<td class="center" style="color:${pColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Pace Gap = Ach% (${r.pct.toFixed(1)}%) − Time% (${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays})">${sign}${gap.toFixed(1)} ${arrow}</td>`;
+        }
+      }
       let fcCell = '';
       if (_showForecast) {
         const { forecast, fcPct } = computeForecast(r);
@@ -3187,6 +3206,7 @@ async function renderTarget() {
         <td class="right strong">${fmtRpShort(r.actualRev)}</td>
         <td class="right">${fmtNum(r.actualQty)}</td>
         <td class="right" style="color:${color};font-weight:700;">${r.target ? r.pct.toFixed(1)+'%' : '—'}</td>
+        ${paceCell}
         ${fcCell}
       </tr>`;
     };
@@ -3216,9 +3236,10 @@ async function renderTarget() {
               <th class="right">Revenue</th>
               <th class="right">Qty</th>
               <th class="right">Achv</th>
+              ${_showPace ? `<th class="center" title="Pace Gap = Ach% − Time% (waktu lewat ${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays}). Positif = di atas pace, negatif = telat.">📈 Pace</th>` : ''}
               ${_showForecast ? '<th class="right" title="Proyeksi end-of-period berdasar pace harian">🔮 Forecast</th><th class="center" title="Projected % vs target di akhir periode">Proj %</th>' : ''}
             </tr></thead>
-            <tbody>${rows || `<tr><td colspan="${_showForecast ? 9 : 7}" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="${7 + (_showPace?1:0) + (_showForecast?2:0)}" class="empty" style="border:none;padding:28px;">Tidak ada data.</td></tr>`}</tbody>
           </table>
         </div>
       </div>`;

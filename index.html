@@ -957,17 +957,7 @@ table.data tfoot td {
         </div>
         <div class="table-wrap" style="max-height:540px;overflow:auto;">
           <table class="data">
-            <thead><tr>
-              <th class="center" style="width:30px;">#</th>
-              <th>SPG</th>
-              <th>Outlet</th>
-              <th class="right">Pairs</th>
-              <th class="right">Revenue</th>
-              <th class="right">Txn</th>
-              <th class="right">ATU</th>
-              <th class="right">ASP</th>
-              <th class="right">ATV</th>
-            </tr></thead>
+            <thead><tr id="spgHead"></tr></thead>
             <tbody id="spgBody"><tr><td colspan="9" class="loading">—</td></tr></tbody>
             <tfoot id="spgFoot"></tfoot>
           </table>
@@ -1092,7 +1082,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.92';
+const APP_VERSION = 'v1.93';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2352,6 +2342,9 @@ function renderHourly(data) {
 }
 
 // ============ RENDER SPG ============
+// SPG sort state — sama pattern dgn outletState
+window.spgState = window.spgState || { sortField: 'revenue', sortDir: 'desc', _lastData: null, _sortWired: false };
+
 function renderSpg(data) {
   // SPG leaderboard works for POS channels (retail + event) which have SPG attribution.
   const wrap = document.getElementById('spgRetailContent');
@@ -2363,8 +2356,63 @@ function renderSpg(data) {
   }
   if (wrap) wrap.style.display = '';
   if (empty) empty.style.display = 'none';
+  spgState._lastData = data;
 
-  const list = (data.bySpg || []).slice().sort((a,b) => (b.revenue||0) - (a.revenue||0));
+  // Decorate dengan derived metrics supaya ATU/ASP/ATV bisa di-sort
+  const decorated = (data.bySpg || []).map(s => {
+    const pairs = Number(s.pairs)||0, rev = Number(s.revenue)||0, trx = Number(s.transactions)||0;
+    return Object.assign({}, s, {
+      _pairs: pairs, _revenue: rev, _trx: trx,
+      _atu: trx ? pairs/trx : 0,
+      _asp: pairs ? rev/pairs : 0,
+      _atv: trx ? rev/trx : 0
+    });
+  });
+  const sf = spgState.sortField || 'revenue';
+  const dir = spgState.sortDir === 'asc' ? 1 : -1;
+  const keyMap = { pairs: '_pairs', revenue: '_revenue', transactions: '_trx', atu: '_atu', asp: '_asp', atv: '_atv' };
+  const sk = keyMap[sf] || '_revenue';
+  const list = decorated.sort((a,b) => ((Number(a[sk])||0) - (Number(b[sk])||0)) * dir);
+
+  // Render sortable header dengan stacked ▲▼ arrow
+  const DIM = '#cbd5e1', HOT = '#00E273';
+  const arrowHtml = (field) => {
+    const active = sf === field;
+    const up   = active && spgState.sortDir === 'asc'  ? HOT : DIM;
+    const down = active && spgState.sortDir === 'desc' ? HOT : DIM;
+    return '<span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;">' +
+      '<span style="color:' + up + ';">▲</span><span style="color:' + down + ';">▼</span></span>';
+  };
+  const sortableTh = (field, label) =>
+    `<th class="right" data-spg-sort="${field}" style="cursor:pointer;user-select:none;" title="Klik untuk sort">${label}${arrowHtml(field)}</th>`;
+  const headHtml = `
+    <th class="center" style="width:30px;">#</th>
+    <th>SPG</th>
+    <th>Outlet</th>
+    ${sortableTh('pairs', 'Pairs')}
+    ${sortableTh('revenue', 'Revenue')}
+    ${sortableTh('transactions', 'Txn')}
+    ${sortableTh('atu', 'ATU')}
+    ${sortableTh('asp', 'ASP')}
+    ${sortableTh('atv', 'ATV')}`;
+  const headEl = document.getElementById('spgHead');
+  if (headEl) headEl.innerHTML = headHtml;
+  if (!spgState._sortWired && headEl) {
+    headEl.addEventListener('click', (ev) => {
+      const th = ev.target.closest('th[data-spg-sort]');
+      if (!th) return;
+      const field = th.getAttribute('data-spg-sort');
+      if (spgState.sortField === field) {
+        spgState.sortDir = (spgState.sortDir === 'desc') ? 'asc' : 'desc';
+      } else {
+        spgState.sortField = field;
+        spgState.sortDir = 'desc';
+      }
+      if (spgState._lastData) renderSpg(spgState._lastData);
+    });
+    spgState._sortWired = true;
+  }
+
   const kpis = data.kpis || {};
   const retailTxn = Number(kpis.transactions) || 0;
   const retailRev = (data.byChannel || []).find(c => c.name === 'retail')?.revenue || 0;

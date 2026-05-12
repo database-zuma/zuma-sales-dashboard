@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.83';
+const APP_VERSION = 'v1.84';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3705,6 +3705,9 @@ async function renderTargetQuarterly() {
                   },
                   afterBody: (items) => {
                     if (!items.length) return '';
+                    // YoY cuma relevan saat hover bar 2026 (datasetIndex=1).
+                    // Bar 2025 = baseline, ga ada "YoY-nya" karena ga ada 2024 di chart ini.
+                    if (items[0].datasetIndex !== 1) return '';
                     const i = items[0].dataIndex;
                     const lines = [];
                     if (a25[i] > 0) {

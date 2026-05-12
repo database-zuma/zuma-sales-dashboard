@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.80';
+const APP_VERSION = 'v1.81';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3544,7 +3544,8 @@ async function renderTargetQuarterly() {
   try {
     const qs = new URLSearchParams({ channel: state.channel, year_start: '2025', year_end: '2026', sandal_only: state.skuOnly ? '1' : '0' });
     const data = await fetchAPI(`/api/targets/achievement-matrix?${qs.toString()}`, { group: 'target-quarterly' });
-    const entities = (data && data.entities) || [];
+    // Endpoint returns { stores: [...] } — each store has { name, branch, area, months: {"YYYY_M": {qty,revenue,target}} }
+    const entities = (data && (data.stores || data.entities)) || [];
 
     // Aggregate per entity into quarter buckets {Q1_2025, Q2_2025, ..., Q4_2026}
     // monthsKey format: "YYYY_M" where M is 1..12

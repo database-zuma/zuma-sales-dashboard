@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.81';
+const APP_VERSION = 'v1.82';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3547,45 +3547,50 @@ async function renderTargetQuarterly() {
     // Endpoint returns { stores: [...] } — each store has { name, branch, area, months: {"YYYY_M": {qty,revenue,target}} }
     const entities = (data && (data.stores || data.entities)) || [];
 
-    // Aggregate per entity into quarter buckets {Q1_2025, Q2_2025, ..., Q4_2026}
-    // monthsKey format: "YYYY_M" where M is 1..12
+    // YoY structure: 4 quarter groups (Q1/Q2/Q3/Q4), each with 2025 vs 2026 side-by-side.
+    // bucket key: "Y{year}Q{n}" — pakai 2 dim (quarter idx 1-4, year 2025/2026).
     const QUARTERS = [
-      { key: 'Q1_2025', year: 2025, months: [1,2,3], label: 'Q1 2025' },
-      { key: 'Q2_2025', year: 2025, months: [4,5,6], label: 'Q2 2025' },
-      { key: 'Q3_2025', year: 2025, months: [7,8,9], label: 'Q3 2025' },
-      { key: 'Q4_2025', year: 2025, months: [10,11,12], label: 'Q4 2025' },
-      { key: 'Q1_2026', year: 2026, months: [1,2,3], label: 'Q1 2026' },
-      { key: 'Q2_2026', year: 2026, months: [4,5,6], label: 'Q2 2026' },
-      { key: 'Q3_2026', year: 2026, months: [7,8,9], label: 'Q3 2026' },
-      { key: 'Q4_2026', year: 2026, months: [10,11,12], label: 'Q4 2026' },
+      { idx: 1, label: 'Q1', months: [1,2,3] },
+      { idx: 2, label: 'Q2', months: [4,5,6] },
+      { idx: 3, label: 'Q3', months: [7,8,9] },
+      { idx: 4, label: 'Q4', months: [10,11,12] },
     ];
+    const YEARS = [2025, 2026];
+    const bkey = (year, qIdx) => `Y${year}Q${qIdx}`;
 
-    // For each entity, sum monthly revenue + target into quarter buckets
+    // For each entity, sum monthly revenue + target into YxQ buckets (8 total).
     const perEntity = entities.map(e => {
       const buckets = {};
-      QUARTERS.forEach(q => { buckets[q.key] = { revenue: 0, target: 0 }; });
-      QUARTERS.forEach(q => {
-        q.months.forEach(m => {
-          const mk = `${q.year}_${m}`;
-          const cell = (e.months || {})[mk] || {};
-          buckets[q.key].revenue += Number(cell.revenue) || 0;
-          buckets[q.key].target  += Number(cell.target)  || 0;
+      YEARS.forEach(y => QUARTERS.forEach(q => { buckets[bkey(y, q.idx)] = { revenue: 0, target: 0 }; }));
+      YEARS.forEach(y => {
+        QUARTERS.forEach(q => {
+          q.months.forEach(m => {
+            const mk = `${y}_${m}`;
+            const cell = (e.months || {})[mk] || {};
+            buckets[bkey(y, q.idx)].revenue += Number(cell.revenue) || 0;
+            buckets[bkey(y, q.idx)].target  += Number(cell.target)  || 0;
+          });
         });
       });
       return { name: e.name, branch: e.branch || e.area || '-', buckets,
                totalRev: Object.values(buckets).reduce((s,b) => s + b.revenue, 0) };
     });
 
-    // Aggregate by scope
+    // Aggregate by scope — buckets are { Y2025Q1, Y2025Q2, ..., Y2026Q4 }
+    function emptyBuckets() {
+      const b = {};
+      YEARS.forEach(y => QUARTERS.forEach(q => { b[bkey(y, q.idx)] = { revenue: 0, target: 0 }; }));
+      return b;
+    }
     function aggregateByScope(scope) {
       if (scope === 'all') {
-        const merged = {};
-        QUARTERS.forEach(q => { merged[q.key] = { revenue: 0, target: 0 }; });
+        const merged = emptyBuckets();
         perEntity.forEach(e => {
-          QUARTERS.forEach(q => {
-            merged[q.key].revenue += e.buckets[q.key].revenue;
-            merged[q.key].target  += e.buckets[q.key].target;
-          });
+          YEARS.forEach(y => QUARTERS.forEach(q => {
+            const k = bkey(y, q.idx);
+            merged[k].revenue += e.buckets[k].revenue;
+            merged[k].target  += e.buckets[k].target;
+          }));
         });
         return [{ name: 'All (Company)', buckets: merged }];
       }
@@ -3593,14 +3598,12 @@ async function renderTargetQuarterly() {
         const byBranch = {};
         perEntity.forEach(e => {
           const b = e.branch || '-';
-          if (!byBranch[b]) {
-            byBranch[b] = { name: b, buckets: {} };
-            QUARTERS.forEach(q => { byBranch[b].buckets[q.key] = { revenue: 0, target: 0 }; });
-          }
-          QUARTERS.forEach(q => {
-            byBranch[b].buckets[q.key].revenue += e.buckets[q.key].revenue;
-            byBranch[b].buckets[q.key].target  += e.buckets[q.key].target;
-          });
+          if (!byBranch[b]) byBranch[b] = { name: b, buckets: emptyBuckets() };
+          YEARS.forEach(y => QUARTERS.forEach(q => {
+            const k = bkey(y, q.idx);
+            byBranch[b].buckets[k].revenue += e.buckets[k].revenue;
+            byBranch[b].buckets[k].target  += e.buckets[k].target;
+          }));
         });
         return Object.values(byBranch).sort((a,b) => {
           const ar = Object.values(a.buckets).reduce((s,x)=>s+x.revenue,0);
@@ -3608,7 +3611,6 @@ async function renderTargetQuarterly() {
           return br - ar;
         });
       }
-      // scope === 'store' → top 12 by total revenue
       return perEntity.sort((a,b) => b.totalRev - a.totalRev).slice(0, 12);
     }
 
@@ -3652,7 +3654,7 @@ async function renderTargetQuarterly() {
       container.innerHTML = groups.map((g, idx) => `
         <div class="card" style="margin-bottom:10px;">
           <div class="card-header"><div class="card-title">${escapeHtml(titleCaseEntity(g.name))}</div>
-            <span class="muted" style="font-size:10px;">Q1'25 → Q4'26</span></div>
+            <span class="muted" style="font-size:10px;">YoY: 2025 vs 2026 per quarter</span></div>
           <div class="card-body" style="padding:8px 14px 14px;">
             <div style="height:${chartHeight}px;position:relative;"><canvas id="qChart_${idx}"></canvas></div>
           </div>
@@ -3663,30 +3665,37 @@ async function renderTargetQuarterly() {
       (quarterlyState._charts || []).forEach(c => { try { c.destroy(); } catch {} });
       quarterlyState._charts = [];
 
-      const NAVY = '#002A3A', GREEN = '#00E273';
+      // YoY palette: 2025 = navy variants, 2026 = green variants
+      const C = {
+        T25: '#94a3b8', A25: '#002A3A',  // 2025: light gray target, navy actual
+        T26: '#86efac', A26: '#00E273',  // 2026: light green target, accent green actual
+      };
       groups.forEach((g, idx) => {
         const canvas = document.getElementById(`qChart_${idx}`);
         if (!canvas) return;
-        const targets = QUARTERS.map(q => g.buckets[q.key].target);
-        const actuals = QUARTERS.map(q => g.buckets[q.key].revenue);
         const labels = QUARTERS.map(q => q.label);
-        const ach = QUARTERS.map((q,i) => targets[i] > 0 ? (actuals[i]/targets[i]*100) : 0);
+        const t25 = QUARTERS.map(q => g.buckets[bkey(2025, q.idx)].target);
+        const a25 = QUARTERS.map(q => g.buckets[bkey(2025, q.idx)].revenue);
+        const t26 = QUARTERS.map(q => g.buckets[bkey(2026, q.idx)].target);
+        const a26 = QUARTERS.map(q => g.buckets[bkey(2026, q.idx)].revenue);
         const ctx = canvas.getContext('2d');
         const chart = new Chart(ctx, {
           type: 'bar',
           data: {
-            labels,
+            labels, // ['Q1','Q2','Q3','Q4']
             datasets: [
-              { label: 'Target', data: targets, backgroundColor: NAVY + 'aa', borderColor: NAVY, borderWidth: 1, borderRadius: 3 },
-              { label: 'Actual', data: actuals, backgroundColor: GREEN + 'cc', borderColor: GREEN, borderWidth: 1, borderRadius: 3 },
+              { label: 'Target 2025', data: t25, backgroundColor: C.T25 + 'cc', borderColor: C.T25, borderWidth: 1, borderRadius: 3 },
+              { label: 'Actual 2025', data: a25, backgroundColor: C.A25 + 'dd', borderColor: C.A25, borderWidth: 1, borderRadius: 3 },
+              { label: 'Target 2026', data: t26, backgroundColor: C.T26 + 'cc', borderColor: C.T26, borderWidth: 1, borderRadius: 3 },
+              { label: 'Actual 2026', data: a26, backgroundColor: C.A26 + 'dd', borderColor: C.A26, borderWidth: 1, borderRadius: 3 },
             ]
           },
           options: {
             responsive: true, maintainAspectRatio: false,
             plugins: {
-              legend: { position: 'bottom', labels: { font: { size: 10 } } },
+              legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } },
               tooltip: {
-                backgroundColor: NAVY, padding: 10, titleFont: { size: 12 }, bodyFont: { size: 11 },
+                backgroundColor: '#002A3A', padding: 10, titleFont: { size: 12 }, bodyFont: { size: 11 },
                 callbacks: {
                   label: (ctx) => {
                     const v = ctx.parsed.y || 0;
@@ -3696,18 +3705,26 @@ async function renderTargetQuarterly() {
                   afterBody: (items) => {
                     if (!items.length) return '';
                     const i = items[0].dataIndex;
-                    const t = targets[i], a = actuals[i];
-                    if (!t) return 'Target belum di-set';
-                    const pct = (a/t*100).toFixed(1);
-                    const gap = a - t;
                     const fmt = (n) => n >= 1e9 ? (n/1e9).toFixed(2)+' M' : n >= 1e6 ? (n/1e6).toFixed(1)+' jt' : n.toLocaleString('id-ID');
-                    return [`Achievement: ${pct}%`, `Gap: ${gap >= 0 ? '+' : ''}Rp ${fmt(gap)}`];
+                    const lines = [];
+                    // Achievement 2025
+                    if (t25[i] > 0) lines.push(`Achv 2025: ${(a25[i]/t25[i]*100).toFixed(1)}%`);
+                    if (t26[i] > 0) lines.push(`Achv 2026: ${(a26[i]/t26[i]*100).toFixed(1)}%`);
+                    // YoY growth (actual)
+                    if (a25[i] > 0) {
+                      const yoy = ((a26[i] - a25[i]) / a25[i]) * 100;
+                      const arrow = yoy >= 0 ? '▲' : '▼';
+                      lines.push(`YoY Actual: ${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% ${arrow}`);
+                    } else if (a26[i] > 0) {
+                      lines.push(`YoY Actual: new period (no 2025 data)`);
+                    }
+                    return lines;
                   }
                 }
               }
             },
             scales: {
-              x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+              x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' } } },
               y: {
                 beginAtZero: true,
                 grid: { color: '#f1f5f9' },
@@ -3719,31 +3736,52 @@ async function renderTargetQuarterly() {
         quarterlyState._charts.push(chart);
       });
 
-      // Summary table — quarter | target | actual | gap | ach% for current scope total
-      const totalBuckets = {};
-      QUARTERS.forEach(q => { totalBuckets[q.key] = { revenue: 0, target: 0 }; });
-      groups.forEach(g => { QUARTERS.forEach(q => { totalBuckets[q.key].revenue += g.buckets[q.key].revenue; totalBuckets[q.key].target += g.buckets[q.key].target; }); });
+      // Summary table — YoY: per quarter side-by-side 2025 vs 2026
+      const totals = emptyBuckets();
+      groups.forEach(g => YEARS.forEach(y => QUARTERS.forEach(q => {
+        const k = bkey(y, q.idx);
+        totals[k].revenue += g.buckets[k].revenue;
+        totals[k].target  += g.buckets[k].target;
+      })));
       const fmtRp = (n) => n >= 1e9 ? `Rp ${(n/1e9).toFixed(2)} M` : n >= 1e6 ? `Rp ${(n/1e6).toFixed(1)} jt` : `Rp ${Math.round(n).toLocaleString('id-ID')}`;
+      const pctColorFn = (t, pct) => !t ? '#94a3b8' : pct >= 100 ? '#16a34a' : pct >= 80 ? '#f59e0b' : '#dc2626';
       tableWrap.innerHTML = `
         <div class="card">
-          <div class="card-header"><div class="card-title">Ringkasan ${quarterlyState.scope === 'all' ? 'Company' : 'Total Scope'}</div></div>
+          <div class="card-header"><div class="card-title">Ringkasan YoY ${quarterlyState.scope === 'all' ? 'Company' : 'Total Scope'}</div></div>
           <div class="table-wrap">
             <table class="data">
-              <thead><tr>
-                <th>Quarter</th><th class="right">Target</th><th class="right">Actual</th>
-                <th class="right">Δ (Rp)</th><th class="right">Achievement</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th rowspan="2">Quarter</th>
+                  <th colspan="3" class="center" style="border-right:1px solid var(--border);">2025</th>
+                  <th colspan="3" class="center" style="border-right:1px solid var(--border);">2026</th>
+                  <th rowspan="2" class="right">YoY Actual</th>
+                </tr>
+                <tr>
+                  <th class="right">Target</th><th class="right">Actual</th><th class="right">Achv</th>
+                  <th class="right">Target</th><th class="right">Actual</th><th class="right">Achv</th>
+                </tr>
+              </thead>
               <tbody>${QUARTERS.map(q => {
-                const t = totalBuckets[q.key].target, a = totalBuckets[q.key].revenue;
-                const gap = a - t;
-                const pct = t > 0 ? (a/t*100) : 0;
-                const pctColor = !t ? '#94a3b8' : pct >= 100 ? '#16a34a' : pct >= 80 ? '#f59e0b' : '#dc2626';
+                const k25 = bkey(2025, q.idx), k26 = bkey(2026, q.idx);
+                const t25 = totals[k25].target, a25 = totals[k25].revenue;
+                const t26 = totals[k26].target, a26 = totals[k26].revenue;
+                const p25 = t25 > 0 ? (a25/t25*100) : 0;
+                const p26 = t26 > 0 ? (a26/t26*100) : 0;
+                const yoy = a25 > 0 ? ((a26 - a25) / a25 * 100) : null;
+                const yoyColor = yoy === null ? '#94a3b8' : yoy >= 0 ? '#16a34a' : '#dc2626';
+                const yoyArrow = yoy === null ? '' : (yoy >= 0 ? '▲' : '▼');
+                const yoyTxt = yoy === null ? '<span class="muted">—</span>' :
+                  `<span style="color:${yoyColor};font-weight:700;">${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% ${yoyArrow}</span>`;
                 return `<tr>
                   <td class="strong">${q.label}</td>
-                  <td class="right">${t ? fmtRp(t) : '<span class="muted">—</span>'}</td>
-                  <td class="right strong">${fmtRp(a)}</td>
-                  <td class="right" style="color:${gap >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${t ? (gap >= 0 ? '+' : '') + fmtRp(gap) : '—'}</td>
-                  <td class="right" style="color:${pctColor};font-weight:700;">${t ? pct.toFixed(1)+'%' : '—'}</td>
+                  <td class="right">${t25 ? fmtRp(t25) : '<span class="muted">—</span>'}</td>
+                  <td class="right">${fmtRp(a25)}</td>
+                  <td class="right" style="color:${pctColorFn(t25, p25)};font-weight:700;">${t25 ? p25.toFixed(1)+'%' : '—'}</td>
+                  <td class="right">${t26 ? fmtRp(t26) : '<span class="muted">—</span>'}</td>
+                  <td class="right strong">${fmtRp(a26)}</td>
+                  <td class="right" style="color:${pctColorFn(t26, p26)};font-weight:700;">${t26 ? p26.toFixed(1)+'%' : '—'}</td>
+                  <td class="right">${yoyTxt}</td>
                 </tr>`;
               }).join('')}</tbody>
             </table>

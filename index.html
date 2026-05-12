@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.89';
+const APP_VERSION = 'v1.90';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3928,12 +3928,21 @@ async function renderRefund() {
     const totRev = state.rawData && state.rawData.kpis ? (state.rawData.kpis.revenue || 0) : 0;
     const refundRate = totRev ? (summary.refund_value / totRev * 100) : 0;
 
-    const rowHtml = (arr, primary, secondary) => (arr || []).slice(0, 50).map(r => `<tr>
-      <td class="strong">${escapeHtml(String(r[primary] || '-'))}</td>
-      ${secondary ? `<td class="muted">${escapeHtml(String(r[secondary] || '-'))}</td>` : ''}
-      <td class="right">${fmtNum(r.refund_qty || 0)}</td>
-      <td class="right strong">${fmtRpShort(r.refund_value || 0)}</td>
-    </tr>`).join('') || `<tr><td colspan="${secondary ? 4 : 3}" class="muted" style="padding:24px;text-align:center;">Tidak ada refund untuk periode ini.</td></tr>`;
+    // Cache detail untuk drill-down click (article breakdown per toko)
+    window._refundDetail = data.detail || [];
+    const rowHtml = (arr, primary, secondary, opts) => {
+      const drillByToko = opts && opts.drillByToko;
+      return (arr || []).slice(0, 50).map(r => {
+        const tokoName = r.toko || r[primary] || '';
+        const drillAttr = drillByToko ? ` data-refund-drill-toko="${escapeHtml(String(tokoName))}" style="cursor:pointer;" title="Klik untuk lihat artikel apa aja yg di-refund di ${escapeHtml(String(tokoName))}"` : '';
+        return `<tr${drillAttr}>
+        <td class="strong">${escapeHtml(String(r[primary] || '-'))}${drillByToko ? ' <span style="font-size:9px;color:#94a3b8;">▸</span>' : ''}</td>
+        ${secondary ? `<td class="muted">${escapeHtml(String(r[secondary] || '-'))}</td>` : ''}
+        <td class="right">${fmtNum(r.refund_qty || 0)}</td>
+        <td class="right strong">${fmtRpShort(r.refund_value || 0)}</td>
+      </tr>`;
+      }).join('') || `<tr><td colspan="${secondary ? 4 : 3}" class="muted" style="padding:24px;text-align:center;">Tidak ada refund untuk periode ini.</td></tr>`;
+    };
 
     wrap.innerHTML = `
       <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:520px;">
@@ -3942,10 +3951,10 @@ async function renderRefund() {
       </div>
 
       <div class="grid-2">
-        <div class="card"><div class="card-header"><div class="card-title">Top Toko · Refund</div></div>
+        <div class="card"><div class="card-header"><div class="card-title">Top Toko · Refund</div><span class="muted" style="font-size:10px;">klik baris untuk lihat artikel</span></div>
           <div class="table-wrap" style="max-height:340px;overflow:auto;">
             <table class="data"><thead><tr><th>Toko</th><th>Area</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
-            <tbody>${rowHtml(byStore, 'toko', 'area')}</tbody></table>
+            <tbody>${rowHtml(byStore, 'toko', 'area', { drillByToko: true })}</tbody></table>
           </div>
         </div>
         <div class="card"><div class="card-header"><div class="card-title">Top SPG · Refund</div></div>
@@ -3970,9 +3979,86 @@ async function renderRefund() {
           </div>
         </div>
       </div>`;
+
+    // Wire drill-down klik baris toko → buka modal artikel
+    wrap.querySelectorAll('tr[data-refund-drill-toko]').forEach(tr => {
+      tr.onclick = () => showRefundArticleModal(tr.getAttribute('data-refund-drill-toko'));
+    });
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/sales/refunds: ${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Modal: per-toko refund artikel breakdown
+function showRefundArticleModal(tokoName) {
+  if (!tokoName) return;
+  const detail = window._refundDetail || [];
+  const normTk = (s) => String(s || '').toLowerCase().trim();
+  const rows = detail.filter(r => normTk(r.toko) === normTk(tokoName));
+
+  // Group by article+sku, sum qty + value
+  const byArt = new Map();
+  rows.forEach(r => {
+    const key = (r.sku || r.article || '-');
+    const cur = byArt.get(key) || { sku: r.sku || '-', article: r.article || '-', qty: 0, value: 0, orders: new Set() };
+    cur.qty   += Number(r.refund_qty   || 0);
+    cur.value += Number(r.refund_value || 0);
+    if (r.order_no) cur.orders.add(r.order_no);
+    byArt.set(key, cur);
+  });
+  const grouped = Array.from(byArt.values())
+    .map(g => ({ ...g, orderCount: g.orders.size }))
+    .sort((a, b) => b.qty - a.qty);
+
+  const totQty = grouped.reduce((s, g) => s + g.qty, 0);
+  const totVal = grouped.reduce((s, g) => s + g.value, 0);
+  const totOrders = new Set(rows.map(r => r.order_no).filter(Boolean)).size;
+
+  let modal = document.getElementById('refundArticleModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'refundArticleModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    document.body.appendChild(modal);
+  }
+  const bodyRows = grouped.length ? grouped.map((g, i) => `
+    <tr>
+      <td class="center muted" style="width:32px;">${i + 1}</td>
+      <td style="font-family:ui-monospace,monospace;font-size:11px;color:#475569;">${escapeHtml(g.sku)}</td>
+      <td class="strong">${escapeHtml(g.article)}</td>
+      <td class="right strong" style="color:#dc2626;">${fmtNum(g.qty)}</td>
+      <td class="right">${fmtRpShort(g.value)}</td>
+      <td class="center muted">${g.orderCount}</td>
+    </tr>`).join('') : `<tr><td colspan="6" class="muted" style="padding:32px;text-align:center;">Tidak ada artikel di-refund di toko ini.<br><small>(Catatan: API hanya kirim 500 baris detail teratas — toko ini mungkin di luar slice itu)</small></td></tr>`;
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:8px;max-width:920px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+      <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:#002A3A;">${escapeHtml(titleCaseEntity(tokoName))}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px;">Artikel yang di-refund · ${grouped.length.toLocaleString('id-ID')} SKU unik · ${totQty.toLocaleString('id-ID')} pairs · ${fmtRpShort(totVal)} · ${totOrders} order</div>
+        </div>
+        <button onclick="document.getElementById('refundArticleModal').remove()" style="background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:0 8px;line-height:1;">×</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:0;">
+        <table class="data" style="margin:0;">
+          <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+            <tr>
+              <th class="center" style="width:32px;">#</th>
+              <th>SKU</th>
+              <th>Article</th>
+              <th class="right">Qty</th>
+              <th class="right">Value</th>
+              <th class="center" title="Jumlah order unik dengan refund article ini">Orders</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // Click outside → close
+  modal.onclick = (ev) => { if (ev.target === modal) modal.remove(); };
 }
 
 // ============ MULTI-SELECT COMPONENT ============

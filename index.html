@@ -11,6 +11,22 @@
 <link rel="preconnect" href="https://srv1346756.hstgr.cloud" crossorigin>
 <link rel="dns-prefetch" href="https://srv1346756.hstgr.cloud">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js';"></script>
+<!-- xlsx-js-style loaded on-demand by ensureXlsx() — saves ~425 KB on first paint -->
+<script>
+  window._xlsxLoadingPromise = null;
+  window.ensureXlsx = function() {
+    if (typeof XLSX !== 'undefined') return Promise.resolve();
+    if (window._xlsxLoadingPromise) return window._xlsxLoadingPromise;
+    window._xlsxLoadingPromise = new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+      s.onload = function(){ resolve(); };
+      s.onerror = function(e){ window._xlsxLoadingPromise = null; reject(e); };
+      document.head.appendChild(s);
+    });
+    return window._xlsxLoadingPromise;
+  };
+</script>
 <script>
 // Fallback ke cdnjs kalau dua di atas gagal — sync load via inline check.
 if (typeof Chart === 'undefined') {
@@ -791,8 +807,7 @@ table.data tfoot td {
         <div style="display:flex; align-items:center; gap:10px;">
           <div class="card-title"><span id="performanceTitle">Store Performance</span></div>
           <div style="display:flex;gap:4px;">
-            <button class="btn-ghost" id="btnCsv">CSV</button>
-            <button class="btn-ghost" id="btnXlsx">XLSX</button>
+            <button class="btn-ghost" id="btnXlsx">Excel</button>
           </div>
         </div>
         <span class="pill" id="performanceMeta">—</span>
@@ -814,7 +829,7 @@ table.data tfoot td {
     <div class="grid-2-wide">
       <div class="card">
         <div class="card-header"><div class="card-title">Outlet Ranking</div>
-          <div style="display:flex;gap:4px;"><button class="btn-ghost" id="btnOutletCsv">CSV</button></div>
+          <div style="display:flex;gap:4px;"><button class="btn-ghost" id="btnOutletCsv">Excel</button></div>
         </div>
         <div class="table-wrap">
           <table class="data" id="outletTable">
@@ -953,7 +968,7 @@ table.data tfoot td {
       </div>
       <div class="card">
         <div class="card-header"><div class="card-title">SPG Leaderboard (retail only)</div>
-          <button class="btn-ghost" id="btnSpgCsv">CSV</button>
+          <button class="btn-ghost" id="btnSpgCsv">Excel</button>
         </div>
         <div class="table-wrap" style="max-height:540px;overflow:auto;">
           <table class="data">
@@ -1082,7 +1097,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.93';
+const APP_VERSION = 'v1.94';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1510,6 +1525,64 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// === XLSX export helper — dark navy header, no gridlines, freeze top row ===
+// Usage: await exportToXlsx({ filename, sheetName, headers:[...], rows:[[...], ...],
+//                            columnWidths:[{wch:14},...], numericCols:[3,4,5,6,7,8] })
+async function exportToXlsx({ filename, sheetName, headers, rows, columnWidths, numericCols, percentCols }) {
+  if (typeof XLSX === 'undefined') {
+    try { await window.ensureXlsx(); }
+    catch (e) { alert('Gagal load library Excel. Cek koneksi internet.'); throw e; }
+  }
+  const aoa = [headers].concat(rows);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const NAVY = '002A3A', WHITE = 'FFFFFF';
+  // Header styling: dark navy bg, white bold text, centered, light border
+  const headerStyle = {
+    font: { bold: true, color: { rgb: WHITE }, sz: 10 },
+    fill: { patternType: 'solid', fgColor: { rgb: NAVY } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: {
+      top:    { style: 'thin', color: { rgb: '003C53' } },
+      bottom: { style: 'thin', color: { rgb: '003C53' } },
+      left:   { style: 'thin', color: { rgb: '003C53' } },
+      right:  { style: 'thin', color: { rgb: '003C53' } }
+    }
+  };
+  for (let c = 0; c < headers.length; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (ws[addr]) ws[addr].s = headerStyle;
+  }
+  // Body cells — number formatting + alignment
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const numericSet = new Set(numericCols || []);
+  const percentSet = new Set(percentCols || []);
+  for (let r = 1; r <= range.e.r; r++) {
+    for (let c = 0; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+      const cellStyle = {
+        alignment: { vertical: 'center', horizontal: numericSet.has(c) || percentSet.has(c) ? 'right' : 'left' },
+        border: { bottom: { style: 'hair', color: { rgb: 'E5E7EB' } } }
+      };
+      if (numericSet.has(c)) {
+        cell.t = 'n';
+        cell.z = '#,##0';
+      } else if (percentSet.has(c)) {
+        cell.t = 'n';
+        cell.z = '0.0"%"';
+      }
+      cell.s = cellStyle;
+    }
+  }
+  if (columnWidths) ws['!cols'] = columnWidths;
+  // Freeze top row + hide gridlines
+  ws['!views'] = [{ state: 'frozen', xSplit: 0, ySplit: 1, showGridLines: false }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Data').slice(0, 31));
+  XLSX.writeFile(wb, filename);
+}
+
 // Title-case entity names that come in all-lowercase from the source
 // (e.g. "zuma pepito bali" → "Zuma Pepito Bali"). Already-capitalized
 // names (Shopee, Lazada) are preserved as-is. Apostrophes kept lower
@@ -1777,25 +1850,30 @@ function renderPerformanceTable(data) {
   document.getElementById('pgPrev').onclick = () => { state.page = Math.max(1, safePage-1); renderPerformanceTable(data); };
   document.getElementById('pgNext').onclick = () => { state.page = Math.min(pages, safePage+1); renderPerformanceTable(data); };
 
-  // CSV/XLSX export
-  document.getElementById('btnCsv').onclick = () => exportCsv(list, label);
-  document.getElementById('btnXlsx').onclick = () => exportCsv(list, label, true);
+  // Excel export
+  document.getElementById('btnXlsx').onclick = () => exportPerformanceXlsx(list, label);
 }
 
-function exportCsv(list, label, xlsx) {
-  const header = ['#', label, areaLabel(state.channel), 'Qty', 'Revenue', 'Txn', 'UPT', 'ASP', 'ATV'];
-  const lines = [header.join(',')];
-  list.forEach((r, i) => {
-    lines.push([i+1, `"${r.entity}"`, `"${r.area}"`, r.qty, r.revenue, r.trx, r.upt.toFixed(2), r.asp.toFixed(0), r.atv.toFixed(0)].join(','));
+async function exportPerformanceXlsx(list, label) {
+  const headers = ['#', label, areaLabel(state.channel), 'Qty', 'Revenue', 'Txn', 'UPT', 'ASP', 'ATV'];
+  const rows = list.map((r, i) => [
+    i + 1,
+    String(r.entity || ''),
+    String(r.area || ''),
+    Number(r.qty) || 0,
+    Number(r.revenue) || 0,
+    Number(r.trx) || 0,
+    Number(r.upt) || 0,
+    Number(r.asp) || 0,
+    Number(r.atv) || 0,
+  ]);
+  await exportToXlsx({
+    filename: `sales-performance-${state.channel}-${state.from}-${state.to}.xlsx`,
+    sheetName: `${state.channel} ${state.from} ${state.to}`,
+    headers, rows,
+    columnWidths: [{wch:5},{wch:32},{wch:14},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
+    numericCols: [0, 3, 4, 5, 6, 7, 8],
   });
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const ext = xlsx ? 'csv' : 'csv';
-  a.href = url;
-  a.download = `sales-performance-${state.channel}-${state.from}-${state.to}.${ext}`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 // ============ RENDER OUTLET ============
@@ -1922,13 +2000,27 @@ function renderOutlet(data) {
     document.getElementById('outNext').onclick = () => { outletState.page = Math.min(pages, page+1); renderOutlet(data); };
   }
 
-  document.getElementById('btnOutletCsv').onclick = () => {
-    const header = ['#','Name',areaLabel(state.channel),'Channel','Pairs','Revenue','Transactions'];
-    const lines = [header.join(',')];
-    entities.forEach((r, i) => lines.push([i+1, `"${r.name||''}"`, `"${r.area||''}"`, `"${r.channel||''}"`, r.pairs||0, r.revenue||0, r.transactions||0].join(',')));
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `outlet-${state.channel}-${state.from}-${state.to}.csv` });
-    a.click();
+  document.getElementById('btnOutletCsv').onclick = async () => {
+    const headers = ['#', 'Name', areaLabel(state.channel), 'Channel', 'Pairs', 'Revenue', 'Txn', 'ATU', 'ASP', 'ATV'];
+    const rows = entities.map((r, i) => [
+      i + 1,
+      String(r.name || ''),
+      String(r.area || ''),
+      String(r.channel || '').toUpperCase(),
+      Number(r._pairs ?? r.pairs) || 0,
+      Number(r._revenue ?? r.revenue) || 0,
+      Number(r._trx ?? r.transactions) || 0,
+      Number(r._atu) || 0,
+      Number(r._asp) || 0,
+      Number(r._atv) || 0,
+    ]);
+    await exportToXlsx({
+      filename: `outlet-${state.channel}-${state.from}-${state.to}.xlsx`,
+      sheetName: `Outlet ${state.channel}`,
+      headers, rows,
+      columnWidths: [{wch:5},{wch:32},{wch:14},{wch:12},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
+      numericCols: [0, 4, 5, 6, 7, 8, 9],
+    });
   };
 
   // Area chart (bar)
@@ -2451,13 +2543,26 @@ function renderSpg(data) {
   const totTrx = list.reduce((a,c) => a + (c.transactions||0), 0);
   document.getElementById('spgFoot').innerHTML = list.length ? `<tr><td class="center" colspan="3">TOTAL</td><td class="right">${fmtNum(totPairs)}</td><td class="right">${fmtRpShort(totRev)}</td><td class="right">${totTrx?fmtNum(totTrx):naDash}</td><td colspan="3"></td></tr>` : '';
 
-  document.getElementById('btnSpgCsv').onclick = () => {
-    const header = ['#','Name','Outlet','Pairs','Revenue','Transactions'];
-    const lines = [header.join(',')];
-    list.forEach((r,i) => lines.push([i+1, `"${r.name||''}"`, `"${r.outlet||''}"`, r.pairs||0, r.revenue||0, r.transactions||0].join(',')));
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `spg-${state.from}-${state.to}.csv` });
-    a.click();
+  document.getElementById('btnSpgCsv').onclick = async () => {
+    const headers = ['#', 'SPG', 'Outlet', 'Pairs', 'Revenue', 'Txn', 'ATU', 'ASP', 'ATV'];
+    const rows = list.map((r, i) => [
+      i + 1,
+      String(r.name || ''),
+      String(r.outlet || ''),
+      Number(r._pairs ?? r.pairs) || 0,
+      Number(r._revenue ?? r.revenue) || 0,
+      Number(r._trx ?? r.transactions) || 0,
+      Number(r._atu) || 0,
+      Number(r._asp) || 0,
+      Number(r._atv) || 0,
+    ]);
+    await exportToXlsx({
+      filename: `spg-${state.from}-${state.to}.xlsx`,
+      sheetName: `SPG ${state.from} ${state.to}`,
+      headers, rows,
+      columnWidths: [{wch:5},{wch:32},{wch:28},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
+      numericCols: [0, 3, 4, 5, 6, 7, 8],
+    });
   };
 }
 
@@ -3584,7 +3689,7 @@ async function renderTargetMatrix() {
               ${[2025,2026].map(y => `<option value="${y}" ${y===yearEnd?'selected':''}>${y}</option>`).join('')}
             </select>
             <button id="mxToggle" class="btn-ghost" style="margin-left:8px;">${compact ? '📊 Expanded' : '📎 Compact'}</button>
-            <button id="mxCsv" class="btn-ghost">CSV</button>
+            <button id="mxCsv" class="btn-ghost">Excel</button>
           </div>
         </div>
         <div class="table-wrap" style="max-height:70vh;overflow:auto;">
@@ -3601,27 +3706,46 @@ async function renderTargetMatrix() {
     document.getElementById('mxYearStart').onchange = e => { matrixState.yearStart = +e.target.value; if (matrixState.yearEnd < matrixState.yearStart) matrixState.yearEnd = matrixState.yearStart; renderTargetMatrix(); };
     document.getElementById('mxYearEnd').onchange   = e => { matrixState.yearEnd = +e.target.value; if (matrixState.yearStart > matrixState.yearEnd) matrixState.yearStart = matrixState.yearEnd; renderTargetMatrix(); };
     document.getElementById('mxToggle').onclick     = () => { matrixState.compact = !matrixState.compact; renderTargetMatrix(); };
-    document.getElementById('mxCsv').onclick = () => {
-      const header = ['#','Store',areaLabel(state.channel)];
+    document.getElementById('mxCsv').onclick = async () => {
+      const headers = ['#', 'Store', areaLabel(state.channel)];
+      const numericCols = [0];     // # column
+      const percentCols = [];
+      let colIdx = 3;
       months.forEach(m => {
-        const label = `${MONTH_LABEL[m.month-1]}_${m.year}`;
-        if (compact) header.push(`${label}_Ach%`);
-        else header.push(`${label}_Qty`, `${label}_Rev`, `${label}_Tgt`, `${label}_Ach%`);
+        const label = `${MONTH_LABEL[m.month-1]} ${m.year}`;
+        if (compact) {
+          headers.push(`${label} Ach%`);
+          percentCols.push(colIdx); colIdx += 1;
+        } else {
+          headers.push(`${label} Qty`, `${label} Rev`, `${label} Tgt`, `${label} Ach%`);
+          numericCols.push(colIdx, colIdx + 1, colIdx + 2);
+          percentCols.push(colIdx + 3);
+          colIdx += 4;
+        }
       });
-      const lines = [header.join(',')];
-      stores.forEach((s, i) => {
-        const row = [i+1, `"${s.name||''}"`, `"${s.area||''}"`];
+      const rows = stores.map((s, i) => {
+        const row = [i + 1, String(s.name || ''), String(s.area || '')];
         months.forEach(m => {
-          const v = s.months[m.key] || { qty:0, revenue:0, target:0 };
-          const pct = v.target ? (v.revenue/v.target*100).toFixed(1) : '';
+          const v = s.months[m.key] || { qty: 0, revenue: 0, target: 0 };
+          const pct = v.target ? (v.revenue / v.target * 100) : 0;
           if (compact) row.push(pct);
-          else row.push(v.qty||0, v.revenue||0, v.target||0, pct);
+          else row.push(Number(v.qty) || 0, Number(v.revenue) || 0, Number(v.target) || 0, pct);
         });
-        lines.push(row.join(','));
+        return row;
       });
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `matrix-${state.channel}-${yearStart}-${yearEnd}.csv` });
-      a.click();
+      // Column widths: # | Store | Area | per month cols
+      const cw = [{wch:5}, {wch:32}, {wch:14}];
+      months.forEach(() => {
+        if (compact) cw.push({wch:10});
+        else cw.push({wch:9}, {wch:13}, {wch:13}, {wch:9});
+      });
+      await exportToXlsx({
+        filename: `matrix-${state.channel}-${yearStart}-${yearEnd}.xlsx`,
+        sheetName: `Matrix ${yearStart}-${yearEnd}`,
+        headers, rows,
+        columnWidths: cw,
+        numericCols, percentCols,
+      });
     };
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat matrix: ${escapeHtml(e.message)}</div>`;

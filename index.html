@@ -1097,7 +1097,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.94';
+const APP_VERSION = 'v1.95';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1528,7 +1528,7 @@ function escapeHtml(s) {
 // === XLSX export helper — dark navy header, no gridlines, freeze top row ===
 // Usage: await exportToXlsx({ filename, sheetName, headers:[...], rows:[[...], ...],
 //                            columnWidths:[{wch:14},...], numericCols:[3,4,5,6,7,8] })
-async function exportToXlsx({ filename, sheetName, headers, rows, columnWidths, numericCols, percentCols }) {
+async function exportToXlsx({ filename, sheetName, headers, rows, columnWidths, numericCols, percentCols, decimalCols }) {
   if (typeof XLSX === 'undefined') {
     try { await window.ensureXlsx(); }
     catch (e) { alert('Gagal load library Excel. Cek koneksi internet.'); throw e; }
@@ -1556,16 +1556,21 @@ async function exportToXlsx({ filename, sheetName, headers, rows, columnWidths, 
   const range = XLSX.utils.decode_range(ws['!ref']);
   const numericSet = new Set(numericCols || []);
   const percentSet = new Set(percentCols || []);
+  const decimalSet = new Set(decimalCols || []);
   for (let r = 1; r <= range.e.r; r++) {
     for (let c = 0; c <= range.e.c; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = ws[addr];
       if (!cell) continue;
+      const isNum = numericSet.has(c) || percentSet.has(c) || decimalSet.has(c);
       const cellStyle = {
-        alignment: { vertical: 'center', horizontal: numericSet.has(c) || percentSet.has(c) ? 'right' : 'left' },
+        alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
         border: { bottom: { style: 'hair', color: { rgb: 'E5E7EB' } } }
       };
-      if (numericSet.has(c)) {
+      if (decimalSet.has(c)) {
+        cell.t = 'n';
+        cell.z = '#,##0.00';  // 2 decimal places — buat ATU/UPT
+      } else if (numericSet.has(c)) {
         cell.t = 'n';
         cell.z = '#,##0';
       } else if (percentSet.has(c)) {
@@ -1872,7 +1877,8 @@ async function exportPerformanceXlsx(list, label) {
     sheetName: `${state.channel} ${state.from} ${state.to}`,
     headers, rows,
     columnWidths: [{wch:5},{wch:32},{wch:14},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
-    numericCols: [0, 3, 4, 5, 6, 7, 8],
+    numericCols: [0, 3, 4, 5, 7, 8],  // # Qty Revenue Txn ASP ATV
+    decimalCols: [6],                  // UPT (col 6) — 2 decimal
   });
 }
 
@@ -2019,7 +2025,8 @@ function renderOutlet(data) {
       sheetName: `Outlet ${state.channel}`,
       headers, rows,
       columnWidths: [{wch:5},{wch:32},{wch:14},{wch:12},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
-      numericCols: [0, 4, 5, 6, 7, 8, 9],
+      numericCols: [0, 4, 5, 6, 8, 9],  // # Pairs Revenue Txn ASP ATV
+      decimalCols: [7],                  // ATU
     });
   };
 
@@ -2561,7 +2568,8 @@ function renderSpg(data) {
       sheetName: `SPG ${state.from} ${state.to}`,
       headers, rows,
       columnWidths: [{wch:5},{wch:32},{wch:28},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
-      numericCols: [0, 3, 4, 5, 6, 7, 8],
+      numericCols: [0, 3, 4, 5, 7, 8],  // # Pairs Revenue Txn ASP ATV
+      decimalCols: [6],                  // ATU
     });
   };
 }

@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.82';
+const APP_VERSION = 'v1.83';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3558,17 +3558,17 @@ async function renderTargetQuarterly() {
     const YEARS = [2025, 2026];
     const bkey = (year, qIdx) => `Y${year}Q${qIdx}`;
 
-    // For each entity, sum monthly revenue + target into YxQ buckets (8 total).
+    // For each entity, sum monthly revenue + qty (pairs) into YxQ buckets (8 total).
     const perEntity = entities.map(e => {
       const buckets = {};
-      YEARS.forEach(y => QUARTERS.forEach(q => { buckets[bkey(y, q.idx)] = { revenue: 0, target: 0 }; }));
+      YEARS.forEach(y => QUARTERS.forEach(q => { buckets[bkey(y, q.idx)] = { revenue: 0, qty: 0 }; }));
       YEARS.forEach(y => {
         QUARTERS.forEach(q => {
           q.months.forEach(m => {
             const mk = `${y}_${m}`;
             const cell = (e.months || {})[mk] || {};
             buckets[bkey(y, q.idx)].revenue += Number(cell.revenue) || 0;
-            buckets[bkey(y, q.idx)].target  += Number(cell.target)  || 0;
+            buckets[bkey(y, q.idx)].qty     += Number(cell.qty)     || 0;
           });
         });
       });
@@ -3579,7 +3579,7 @@ async function renderTargetQuarterly() {
     // Aggregate by scope — buckets are { Y2025Q1, Y2025Q2, ..., Y2026Q4 }
     function emptyBuckets() {
       const b = {};
-      YEARS.forEach(y => QUARTERS.forEach(q => { b[bkey(y, q.idx)] = { revenue: 0, target: 0 }; }));
+      YEARS.forEach(y => QUARTERS.forEach(q => { b[bkey(y, q.idx)] = { revenue: 0, qty: 0 }; }));
       return b;
     }
     function aggregateByScope(scope) {
@@ -3589,7 +3589,7 @@ async function renderTargetQuarterly() {
           YEARS.forEach(y => QUARTERS.forEach(q => {
             const k = bkey(y, q.idx);
             merged[k].revenue += e.buckets[k].revenue;
-            merged[k].target  += e.buckets[k].target;
+            merged[k].qty     += e.buckets[k].qty;
           }));
         });
         return [{ name: 'All (Company)', buckets: merged }];
@@ -3602,7 +3602,7 @@ async function renderTargetQuarterly() {
           YEARS.forEach(y => QUARTERS.forEach(q => {
             const k = bkey(y, q.idx);
             byBranch[b].buckets[k].revenue += e.buckets[k].revenue;
-            byBranch[b].buckets[k].target  += e.buckets[k].target;
+            byBranch[b].buckets[k].qty     += e.buckets[k].qty;
           }));
         });
         return Object.values(byBranch).sort((a,b) => {
@@ -3665,58 +3665,57 @@ async function renderTargetQuarterly() {
       (quarterlyState._charts || []).forEach(c => { try { c.destroy(); } catch {} });
       quarterlyState._charts = [];
 
-      // YoY palette: 2025 = navy variants, 2026 = green variants
-      const C = {
-        T25: '#94a3b8', A25: '#002A3A',  // 2025: light gray target, navy actual
-        T26: '#86efac', A26: '#00E273',  // 2026: light green target, accent green actual
-      };
+      // YoY palette: 2025 = navy, 2026 = green Zuma
+      const C25 = '#002A3A', C26 = '#00E273';
       groups.forEach((g, idx) => {
         const canvas = document.getElementById(`qChart_${idx}`);
         if (!canvas) return;
         const labels = QUARTERS.map(q => q.label);
-        const t25 = QUARTERS.map(q => g.buckets[bkey(2025, q.idx)].target);
         const a25 = QUARTERS.map(q => g.buckets[bkey(2025, q.idx)].revenue);
-        const t26 = QUARTERS.map(q => g.buckets[bkey(2026, q.idx)].target);
         const a26 = QUARTERS.map(q => g.buckets[bkey(2026, q.idx)].revenue);
+        const q25 = QUARTERS.map(q => g.buckets[bkey(2025, q.idx)].qty);
+        const q26 = QUARTERS.map(q => g.buckets[bkey(2026, q.idx)].qty);
         const ctx = canvas.getContext('2d');
         const chart = new Chart(ctx, {
           type: 'bar',
           data: {
             labels, // ['Q1','Q2','Q3','Q4']
             datasets: [
-              { label: 'Target 2025', data: t25, backgroundColor: C.T25 + 'cc', borderColor: C.T25, borderWidth: 1, borderRadius: 3 },
-              { label: 'Actual 2025', data: a25, backgroundColor: C.A25 + 'dd', borderColor: C.A25, borderWidth: 1, borderRadius: 3 },
-              { label: 'Target 2026', data: t26, backgroundColor: C.T26 + 'cc', borderColor: C.T26, borderWidth: 1, borderRadius: 3 },
-              { label: 'Actual 2026', data: a26, backgroundColor: C.A26 + 'dd', borderColor: C.A26, borderWidth: 1, borderRadius: 3 },
+              { label: '2025', data: a25, backgroundColor: C25 + 'dd', borderColor: C25, borderWidth: 1, borderRadius: 4 },
+              { label: '2026', data: a26, backgroundColor: C26 + 'dd', borderColor: C26, borderWidth: 1, borderRadius: 4 },
             ]
           },
           options: {
             responsive: true, maintainAspectRatio: false,
             plugins: {
-              legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } },
+              legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 14 } },
               tooltip: {
-                backgroundColor: '#002A3A', padding: 10, titleFont: { size: 12 }, bodyFont: { size: 11 },
+                backgroundColor: '#002A3A', padding: 12, titleFont: { size: 13, weight: '700' }, bodyFont: { size: 11 },
                 callbacks: {
                   label: (ctx) => {
-                    const v = ctx.parsed.y || 0;
+                    const i = ctx.dataIndex;
+                    const is25 = ctx.datasetIndex === 0;
+                    const rev = is25 ? a25[i] : a26[i];
+                    const pairs = is25 ? q25[i] : q26[i];
                     const fmt = (n) => n >= 1e9 ? (n/1e9).toFixed(2)+' M' : n >= 1e6 ? (n/1e6).toFixed(1)+' jt' : n.toLocaleString('id-ID');
-                    return `${ctx.dataset.label}: Rp ${fmt(v)}`;
+                    return [
+                      `${ctx.dataset.label} Revenue: Rp ${fmt(rev)}`,
+                      `${ctx.dataset.label} Pairs:   ${pairs.toLocaleString('id-ID')}`
+                    ];
                   },
                   afterBody: (items) => {
                     if (!items.length) return '';
                     const i = items[0].dataIndex;
-                    const fmt = (n) => n >= 1e9 ? (n/1e9).toFixed(2)+' M' : n >= 1e6 ? (n/1e6).toFixed(1)+' jt' : n.toLocaleString('id-ID');
                     const lines = [];
-                    // Achievement 2025
-                    if (t25[i] > 0) lines.push(`Achv 2025: ${(a25[i]/t25[i]*100).toFixed(1)}%`);
-                    if (t26[i] > 0) lines.push(`Achv 2026: ${(a26[i]/t26[i]*100).toFixed(1)}%`);
-                    // YoY growth (actual)
                     if (a25[i] > 0) {
-                      const yoy = ((a26[i] - a25[i]) / a25[i]) * 100;
-                      const arrow = yoy >= 0 ? '▲' : '▼';
-                      lines.push(`YoY Actual: ${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% ${arrow}`);
-                    } else if (a26[i] > 0) {
-                      lines.push(`YoY Actual: new period (no 2025 data)`);
+                      const yoyRev = ((a26[i] - a25[i]) / a25[i]) * 100;
+                      const arrow = yoyRev >= 0 ? '▲' : '▼';
+                      lines.push(`YoY Revenue: ${yoyRev >= 0 ? '+' : ''}${yoyRev.toFixed(1)}% ${arrow}`);
+                    }
+                    if (q25[i] > 0) {
+                      const yoyPairs = ((q26[i] - q25[i]) / q25[i]) * 100;
+                      const arrow = yoyPairs >= 0 ? '▲' : '▼';
+                      lines.push(`YoY Pairs:   ${yoyPairs >= 0 ? '+' : ''}${yoyPairs.toFixed(1)}% ${arrow}`);
                     }
                     return lines;
                   }
@@ -3724,7 +3723,7 @@ async function renderTargetQuarterly() {
               }
             },
             scales: {
-              x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' } } },
+              x: { grid: { display: false }, ticks: { font: { size: 12, weight: '700' } } },
               y: {
                 beginAtZero: true,
                 grid: { color: '#f1f5f9' },
@@ -3736,15 +3735,21 @@ async function renderTargetQuarterly() {
         quarterlyState._charts.push(chart);
       });
 
-      // Summary table — YoY: per quarter side-by-side 2025 vs 2026
+      // Summary table — YoY: per quarter, Revenue + Pairs side-by-side (no target)
       const totals = emptyBuckets();
       groups.forEach(g => YEARS.forEach(y => QUARTERS.forEach(q => {
         const k = bkey(y, q.idx);
         totals[k].revenue += g.buckets[k].revenue;
-        totals[k].target  += g.buckets[k].target;
+        totals[k].qty     += g.buckets[k].qty;
       })));
       const fmtRp = (n) => n >= 1e9 ? `Rp ${(n/1e9).toFixed(2)} M` : n >= 1e6 ? `Rp ${(n/1e6).toFixed(1)} jt` : `Rp ${Math.round(n).toLocaleString('id-ID')}`;
-      const pctColorFn = (t, pct) => !t ? '#94a3b8' : pct >= 100 ? '#16a34a' : pct >= 80 ? '#f59e0b' : '#dc2626';
+      const yoyCell = (cur, prev) => {
+        if (!prev) return '<span class="muted">—</span>';
+        const pct = (cur - prev) / prev * 100;
+        const color = pct >= 0 ? '#16a34a' : '#dc2626';
+        const arrow = pct >= 0 ? '▲' : '▼';
+        return `<span style="color:${color};font-weight:700;">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% ${arrow}</span>`;
+      };
       tableWrap.innerHTML = `
         <div class="card">
           <div class="card-header"><div class="card-title">Ringkasan YoY ${quarterlyState.scope === 'all' ? 'Company' : 'Total Scope'}</div></div>
@@ -3753,35 +3758,28 @@ async function renderTargetQuarterly() {
               <thead>
                 <tr>
                   <th rowspan="2">Quarter</th>
-                  <th colspan="3" class="center" style="border-right:1px solid var(--border);">2025</th>
-                  <th colspan="3" class="center" style="border-right:1px solid var(--border);">2026</th>
-                  <th rowspan="2" class="right">YoY Actual</th>
+                  <th colspan="2" class="center" style="border-right:1px solid var(--border);">2025</th>
+                  <th colspan="2" class="center" style="border-right:1px solid var(--border);">2026</th>
+                  <th colspan="2" class="center">YoY</th>
                 </tr>
                 <tr>
-                  <th class="right">Target</th><th class="right">Actual</th><th class="right">Achv</th>
-                  <th class="right">Target</th><th class="right">Actual</th><th class="right">Achv</th>
+                  <th class="right">Revenue</th><th class="right">Pairs</th>
+                  <th class="right">Revenue</th><th class="right">Pairs</th>
+                  <th class="right">Revenue</th><th class="right">Pairs</th>
                 </tr>
               </thead>
               <tbody>${QUARTERS.map(q => {
                 const k25 = bkey(2025, q.idx), k26 = bkey(2026, q.idx);
-                const t25 = totals[k25].target, a25 = totals[k25].revenue;
-                const t26 = totals[k26].target, a26 = totals[k26].revenue;
-                const p25 = t25 > 0 ? (a25/t25*100) : 0;
-                const p26 = t26 > 0 ? (a26/t26*100) : 0;
-                const yoy = a25 > 0 ? ((a26 - a25) / a25 * 100) : null;
-                const yoyColor = yoy === null ? '#94a3b8' : yoy >= 0 ? '#16a34a' : '#dc2626';
-                const yoyArrow = yoy === null ? '' : (yoy >= 0 ? '▲' : '▼');
-                const yoyTxt = yoy === null ? '<span class="muted">—</span>' :
-                  `<span style="color:${yoyColor};font-weight:700;">${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% ${yoyArrow}</span>`;
+                const r25 = totals[k25].revenue, p25 = totals[k25].qty;
+                const r26 = totals[k26].revenue, p26 = totals[k26].qty;
                 return `<tr>
                   <td class="strong">${q.label}</td>
-                  <td class="right">${t25 ? fmtRp(t25) : '<span class="muted">—</span>'}</td>
-                  <td class="right">${fmtRp(a25)}</td>
-                  <td class="right" style="color:${pctColorFn(t25, p25)};font-weight:700;">${t25 ? p25.toFixed(1)+'%' : '—'}</td>
-                  <td class="right">${t26 ? fmtRp(t26) : '<span class="muted">—</span>'}</td>
-                  <td class="right strong">${fmtRp(a26)}</td>
-                  <td class="right" style="color:${pctColorFn(t26, p26)};font-weight:700;">${t26 ? p26.toFixed(1)+'%' : '—'}</td>
-                  <td class="right">${yoyTxt}</td>
+                  <td class="right">${fmtRp(r25)}</td>
+                  <td class="right">${p25.toLocaleString('id-ID')}</td>
+                  <td class="right strong">${fmtRp(r26)}</td>
+                  <td class="right strong">${p26.toLocaleString('id-ID')}</td>
+                  <td class="right">${yoyCell(r26, r25)}</td>
+                  <td class="right">${yoyCell(p26, p25)}</td>
                 </tr>`;
               }).join('')}</tbody>
             </table>

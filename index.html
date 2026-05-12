@@ -1088,7 +1088,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.76';
+const APP_VERSION = 'v1.77';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2681,24 +2681,29 @@ async function renderGrowth() {
   const wrap = document.getElementById('growthContent');
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat growth (fetch 2 periode)…</div>';
   try {
-    const isYoy = state.growthMode !== 'mom';
+    const mode = state.growthMode || 'yoy';
+    const isYoy = mode === 'yoy';
+    const isMom = mode === 'mom';
+    const isWow = mode === 'wow';
     // Determine cur & prev periods.
     // YoY: cur = state.from-state.to (user filter), prev = -1 year
-    // MoM: cur = 1st of current month → today, prev = 1st of prev month → same day-of-month (smart, ignore user filter)
+    // MoM: cur = 1st current month → today, prev = 1st prev month → same DOM
+    // WoW: cur = Senin minggu ini → hari ini, prev = Senin minggu lalu → hari yg sama minggu lalu
     let curFrom, curTo, prevFrom, prevTo, curData;
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmtIso = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
     if (isYoy) {
       curFrom = state.from;
       curTo = state.to;
       prevFrom = _shiftDateYear(state.from, -1);
       prevTo = _shiftDateYear(state.to, -1);
       curData = state.rawData || {};
-    } else {
+    } else if (isMom) {
       // MoM smart auto-detect
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = today.getMonth(); // 0-11
       const dd = today.getDate();
-      const pad = (n) => String(n).padStart(2, '0');
       curFrom = `${yyyy}-${pad(mm + 1)}-01`;
       curTo = `${yyyy}-${pad(mm + 1)}-${pad(dd)}`;
       const prevMonth = new Date(yyyy, mm - 1, 1);
@@ -2711,6 +2716,20 @@ async function renderGrowth() {
       prevTo = `${prevYyyy}-${pad(prevMm + 1)}-${pad(prevDd)}`;
       // Fetch cur period juga (tidak reuse state.rawData karena range beda)
       curData = await loadChannel(state.channel, curFrom, curTo, { group: 'growth-cur-mom' });
+    } else if (isWow) {
+      // WoW auto-detect — Senin (ISO) = awal minggu
+      const today = new Date();
+      // JS getDay(): Sunday=0, Mon=1, ..., Sat=6. ISO Mon=1...Sun=7.
+      const isoDow = today.getDay() === 0 ? 7 : today.getDay();
+      const daysFromMon = isoDow - 1;
+      const curMon = new Date(today); curMon.setDate(today.getDate() - daysFromMon);
+      const prevMon = new Date(curMon); prevMon.setDate(curMon.getDate() - 7);
+      const prevEnd = new Date(today); prevEnd.setDate(today.getDate() - 7);
+      curFrom = fmtIso(curMon);
+      curTo   = fmtIso(today);
+      prevFrom = fmtIso(prevMon);
+      prevTo   = fmtIso(prevEnd);
+      curData = await loadChannel(state.channel, curFrom, curTo, { group: 'growth-cur-wow' });
     }
     // Parallel fetch prev period + wholesale (tiap mode group beda biar cache valid)
     const [prevData, wholesaleCur, wholesalePrev] = await Promise.all([
@@ -2743,6 +2762,7 @@ async function renderGrowth() {
     };
     const periodLabel = isYoy ? `${fmtMonth(curFrom)} – ${fmtMonth(curTo)}` : `${fmtDay(curFrom)} – ${fmtDay(curTo)}`;
     const prevLabel   = isYoy ? `${fmtMonth(prevFrom)} – ${fmtMonth(prevTo)}` : `${fmtDay(prevFrom)} – ${fmtDay(prevTo)}`;
+    const modeLabel = isYoy ? 'YoY' : (isMom ? 'MoM' : 'WoW');
 
     const curKpi = (curData && curData.kpis) || {};
     const prevKpi = (prevData && prevData.kpis) || {};
@@ -2857,14 +2877,15 @@ async function renderGrowth() {
     const modeBtnStyle = (active) => `padding:6px 14px;border:1px solid ${active?'#002A3A':'var(--border)'};background:${active?'#002A3A':'#fff'};color:${active?'#fff':'#475569'};font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;`;
     wrap.innerHTML = `
       <div style="margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;font-size:12px;color:#475569;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <strong style="color:#002A3A;">Growth ${isYoy?'YoY':'MoM'}</strong>
+        <strong style="color:#002A3A;">Growth ${modeLabel}</strong>
         <span>·</span>
         <span>${periodLabel} <strong>vs</strong> ${prevLabel}</span>
         <span>·</span>
         <span>Channel: <strong>${state.channel}</strong></span>
         <span style="margin-left:auto;display:flex;gap:6px;">
           <button id="gmYoy" style="${modeBtnStyle(isYoy)}">YoY</button>
-          <button id="gmMom" style="${modeBtnStyle(!isYoy)}">MoM</button>
+          <button id="gmMom" style="${modeBtnStyle(isMom)}">MoM</button>
+          <button id="gmWow" style="${modeBtnStyle(isWow)}">WoW</button>
         </span>
       </div>
       <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:640px;margin-bottom:14px;">
@@ -2887,11 +2908,13 @@ async function renderGrowth() {
     wrap.querySelectorAll('tr[data-drill-store]').forEach(tr => {
       tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
     });
-    // Wire toggle YoY/MoM
+    // Wire toggle YoY/MoM/WoW
     const yoyBtn = document.getElementById('gmYoy');
     const momBtn = document.getElementById('gmMom');
+    const wowBtn = document.getElementById('gmWow');
     if (yoyBtn) yoyBtn.onclick = () => { state.growthMode = 'yoy'; renderGrowth(); };
     if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
+    if (wowBtn) wowBtn.onclick = () => { state.growthMode = 'wow'; renderGrowth(); };
   } catch (e) {
     // Filter change bikin fetch terabort — silent skip, next refresh akan re-render.
     const msg = String(e?.message || e || '');

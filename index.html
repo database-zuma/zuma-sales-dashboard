@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.84';
+const APP_VERSION = 'v1.85';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3545,7 +3545,20 @@ async function renderTargetQuarterly() {
     const qs = new URLSearchParams({ channel: state.channel, year_start: '2025', year_end: '2026', sandal_only: state.skuOnly ? '1' : '0' });
     const data = await fetchAPI(`/api/targets/achievement-matrix?${qs.toString()}`, { group: 'target-quarterly' });
     // Endpoint returns { stores: [...] } — each store has { name, branch, area, months: {"YYYY_M": {qty,revenue,target}} }
-    const entities = (data && (data.stores || data.entities)) || [];
+    let entities = (data && (data.stores || data.entities)) || [];
+    // Apply global filter: state.store (array of names) + state.area (array of areas)
+    const norm = (s) => String(s || '').toLowerCase().trim();
+    const storeFilter = Array.isArray(state.store) ? state.store.filter(Boolean).map(norm) : [];
+    const areaFilter  = Array.isArray(state.area)  ? state.area.filter(Boolean).map(norm)  : [];
+    if (storeFilter.length || areaFilter.length) {
+      entities = entities.filter(e => {
+        const nm = norm(e.name);
+        const br = norm(e.branch || e.area);
+        if (storeFilter.length && !storeFilter.includes(nm)) return false;
+        if (areaFilter.length  && !areaFilter.includes(br))  return false;
+        return true;
+      });
+    }
 
     // YoY structure: 4 quarter groups (Q1/Q2/Q3/Q4), each with 2025 vs 2026 side-by-side.
     // bucket key: "Y{year}Q{n}" — pakai 2 dim (quarter idx 1-4, year 2025/2026).
@@ -3557,6 +3570,14 @@ async function renderTargetQuarterly() {
     ];
     const YEARS = [2025, 2026];
     const bkey = (year, qIdx) => `Y${year}Q${qIdx}`;
+
+    if (!entities.length) {
+      wrap.innerHTML = `<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">
+        Tidak ada toko yang cocok dengan filter aktif.
+        ${storeFilter.length || areaFilter.length ? '<br><small style="color:#64748b;">Coba reset filter toko/area di filter bar atas.</small>' : ''}
+      </div>`;
+      return;
+    }
 
     // For each entity, sum monthly revenue + qty (pairs) into YxQ buckets (8 total).
     const perEntity = entities.map(e => {
@@ -3611,21 +3632,28 @@ async function renderTargetQuarterly() {
           return br - ar;
         });
       }
-      return perEntity.sort((a,b) => b.totalRev - a.totalRev).slice(0, 12);
+      // 'store' fallback (kalau scope dropdown nyangkut nilai lama dari user session)
+      return perEntity.sort((a,b) => b.totalRev - a.totalRev);
     }
 
     // Build UI: scope dropdown + chart canvas + summary table
+    const filterBadges = [];
+    if (storeFilter.length) filterBadges.push(`<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">Toko: ${storeFilter.length}</span>`);
+    if (areaFilter.length)  filterBadges.push(`<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">Area: ${areaFilter.length}</span>`);
+    const filterText = filterBadges.length
+      ? `<span>·</span><span>Filter aktif: ${filterBadges.join(' ')}</span>`
+      : `<span style="color:#94a3b8;font-size:11px;">· Filter toko/area: kosong (semua)</span>`;
     wrap.innerHTML = `
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;flex-wrap:wrap;">
         <strong style="color:#002A3A;">Quarterly Achievement</strong>
         <span>·</span>
         <span>Channel: <strong>${state.channel}</strong></span>
+        ${filterText}
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
-          <label style="font-size:11.5px;color:#64748b;font-weight:600;">Scope:</label>
+          <label style="font-size:11.5px;color:#64748b;font-weight:600;">Tampilkan:</label>
           <select id="qScope" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">
-            <option value="all">All (Company Rollup)</option>
+            <option value="all">Rollup (gabungan)</option>
             <option value="branch">Per Branch</option>
-            <option value="store">Per Toko (Top 12)</option>
           </select>
         </span>
       </div>
@@ -3634,6 +3662,8 @@ async function renderTargetQuarterly() {
     `;
 
     const select = document.getElementById('qScope');
+    // Sanitize stored scope — kalau user pernah pilih 'store' di versi lama, balik ke 'all'
+    if (quarterlyState.scope !== 'all' && quarterlyState.scope !== 'branch') quarterlyState.scope = 'all';
     select.value = quarterlyState.scope;
     select.onchange = () => { quarterlyState.scope = select.value; renderQuarterlyChart(); };
 

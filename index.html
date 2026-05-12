@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.87';
+const APP_VERSION = 'v1.88';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3190,8 +3190,13 @@ async function renderTarget() {
     const renderAchvRow = (r, i) => {
       const color = r.pct >= 100 ? '#16a34a' : r.pct >= 80 ? '#f59e0b' : r.target ? '#dc2626' : '#94a3b8';
       const bg = r.pct >= 100 ? 'rgba(22,163,74,0.08)' : r.pct >= 80 ? 'rgba(245,158,11,0.06)' : r.pct < 80 && r.target ? 'rgba(220,38,38,0.06)' : '';
-      // Pace Gap cell — Ach% − Time%. >+5pp=ahead (hijau), −5..+5=on pace (abu), <−5pp=behind (merah).
+      // Pace Gap cell — Ach% − Time%.
       // Δ Rp cell — Revenue − Expected. Expected = target × (elapsed/total).
+      // Color: 3-tier traffic light, single source-of-truth = pace gap (pp).
+      //   gap >= 0      → hijau (on pace / ahead)
+      //   -10 < gap < 0 → kuning (mulai telat)
+      //   gap <= -10    → merah  (telat banget)
+      // Dua kolom (Pace + Δ Rp) PAKAI WARNA SAMA per row.
       let paceCell = '', deltaRpCell = '';
       if (_showPace) {
         if (!r.target) {
@@ -3199,16 +3204,15 @@ async function renderTarget() {
           deltaRpCell = '<td class="right muted">—</td>';
         } else {
           const gap = r.pct - _timePct;
-          const pColor = gap >= 5 ? '#16a34a' : gap > -5 ? '#64748b' : gap > -15 ? '#f59e0b' : '#dc2626';
+          const trafficColor = gap >= 0 ? '#16a34a' : gap > -10 ? '#f59e0b' : '#dc2626';
           const arrow = gap >= 1 ? '▲' : gap <= -1 ? '▼' : '';
           const sign = gap > 0 ? '+' : '';
-          paceCell = `<td class="center" style="color:${pColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Pace Gap = Ach% (${r.pct.toFixed(1)}%) − Time% (${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays})">${sign}${gap.toFixed(1)} ${arrow}</td>`;
+          paceCell = `<td class="center" style="color:${trafficColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Pace Gap = Ach% (${r.pct.toFixed(1)}%) − Time% (${_timePct.toFixed(1)}%, hari ${_elapsedDays}/${_totalDays})">${sign}${gap.toFixed(1)} ${arrow}</td>`;
           // Δ Rp — selisih rupiah vs ekspektasi proporsional waktu
           const expectedRev = r.target * (_elapsedDays / _totalDays);
           const deltaRp = r.actualRev - expectedRev;
-          const dColor = deltaRp >= 0 ? '#16a34a' : deltaRp > -expectedRev * 0.1 ? '#64748b' : deltaRp > -expectedRev * 0.3 ? '#f59e0b' : '#dc2626';
           const dSign = deltaRp > 0 ? '+' : '';
-          deltaRpCell = `<td class="right" style="color:${dColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Selisih revenue vs ekspektasi proporsional. Expected = Target ${fmtRpShort(r.target)} × ${_elapsedDays}/${_totalDays} = ${fmtRpShort(expectedRev)}. Actual = ${fmtRpShort(r.actualRev)}.">${dSign}${fmtRpShort(deltaRp)}</td>`;
+          deltaRpCell = `<td class="right" style="color:${trafficColor};font-weight:700;font-variant-numeric:tabular-nums;" title="Selisih revenue vs ekspektasi proporsional. Expected = Target ${fmtRpShort(r.target)} × ${_elapsedDays}/${_totalDays} = ${fmtRpShort(expectedRev)}. Actual = ${fmtRpShort(r.actualRev)}.">${dSign}${fmtRpShort(deltaRp)}</td>`;
         }
       }
       let fcCell = '';

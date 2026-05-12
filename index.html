@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.86';
+const APP_VERSION = 'v1.87';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3017,8 +3017,20 @@ async function renderTarget() {
     return;
   }
 
-  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target...</div>';
+  // === Current Period subtab punya pickerBulan/tahun SENDIRI, lepas dari global filter ===
+  const _todayInit = new Date();
+  if (!state.targetCurrentMonth) {
+    state.targetCurrentMonth = { year: _todayInit.getFullYear(), month: _todayInit.getMonth() + 1 };
+  }
+  const _pad2 = (n) => String(n).padStart(2, '0');
+  const pickY = state.targetCurrentMonth.year;
+  const pickM = state.targetCurrentMonth.month; // 1..12
+  const _effFrom = `${pickY}-${_pad2(pickM)}-01`;
+  const _effTo   = `${pickY}-${_pad2(pickM)}-${_pad2(new Date(pickY, pickM, 0).getDate())}`;
+
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat target ' + _pad2(pickM) + '/' + pickY + '…</div>';
   try {
+    const _pickedData = await loadChannel(state.channel, _effFrom, _effTo, { group: 'target-cur-pick' });
     const data = await fetchAPI('/api/targets');
     const rawTargets = Array.isArray(data)
       ? data
@@ -3034,12 +3046,11 @@ async function renderTarget() {
     const targets = rawTargets.filter(t => !TARGET_AREA_ROLLUPS.has(normalize(t.store || t.toko)));
 
     const MONTH_KEYS = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
-    const fromD = new Date(state.from);
-    const toD   = new Date(state.to);
-    const activeMonths = MONTH_KEYS.filter((_, i) => i >= fromD.getMonth() && i <= toD.getMonth());
+    // 1-bulan picker → activeMonths cuma 1 key (e.g. ['mei'] untuk Mei)
+    const activeMonths = [MONTH_KEYS[pickM - 1]];
     const monthLabel = activeMonths.map(m => m.toUpperCase()).join('+');
 
-    const byEntity = state.rawData && state.rawData.byEntity ? state.rawData.byEntity : [];
+    const byEntity = (_pickedData && _pickedData.byEntity) || [];
 
     let tracked = [];
     let untracked = [];
@@ -3133,12 +3144,10 @@ async function renderTarget() {
     const notYet   = tracked.filter(r => r.pct < 100 || !r.target).sort((a,b) => a.pct - b.pct);  // worst first so attention naturally falls on stores that need help
 
     // ===== Forecast/runrate (proyeksi end-of-period berdasar pace harian) =====
-    // Smart end detection: kalau state.from = tanggal 1 bulan tertentu DAN state.to masih
-    // di bulan yang sama → auto-extend forecast ke akhir bulan (untuk monthly target tracking).
-    // Selain itu pakai state.to apa adanya.
+    // Selalu pakai 1-bulan range dari picker (_effFrom = tanggal 1, _effTo = end-of-month).
     const _today = new Date();
-    const _fromD = new Date(state.from);
-    const _toD = new Date(state.to);
+    const _fromD = new Date(_effFrom);
+    const _toD = new Date(_effTo);
     const _dayMs = 86400000;
     const _isFirstOfMonth = _fromD.getDate() === 1;
     const _sameMonth = _fromD.getFullYear() === _toD.getFullYear() && _fromD.getMonth() === _toD.getMonth();
@@ -3150,7 +3159,7 @@ async function renderTarget() {
     // Detect actual data cutoff dari timeSeries — cari tanggal terakhir yg ada revenue > 0.
     // Penting biar pace ga di-divide hari kosong (weekend gap, POS belum sync, dll).
     let _lastDataDate = null;
-    const _ts = (state.rawData && state.rawData.timeSeries) || [];
+    const _ts = (_pickedData && _pickedData.timeSeries) || [];
     for (const t of _ts) {
       if ((Number(t.revenue) || 0) > 0 && t.date) {
         const d = new Date(String(t.date).slice(0, 10));
@@ -3277,12 +3286,53 @@ async function renderTarget() {
         </div>
       </div>` : '';
 
+    // === Picker bulan/tahun bar di atas ===
+    const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const curYear = (new Date()).getFullYear();
+    const curMonth = (new Date()).getMonth() + 1;
+    const yearOpts = [];
+    for (let y = curYear - 1; y <= curYear; y++) yearOpts.push(y);
+    const monthSelectHTML = MONTH_NAMES_ID.map((nm, i) => {
+      const m = i + 1;
+      const disabled = (pickY === curYear && m > curMonth) ? 'disabled' : ''; // future months in current year disabled
+      return `<option value="${m}" ${disabled} ${m === pickM ? 'selected' : ''}>${nm}</option>`;
+    }).join('');
+    const yearSelectHTML = yearOpts.map(y =>
+      `<option value="${y}" ${y === pickY ? 'selected' : ''}>${y}</option>`
+    ).join('');
+    const pickerBar = `
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;flex-wrap:wrap;">
+        <strong style="color:#002A3A;">Periode Target</strong>
+        <select id="targetPickMonth" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">${monthSelectHTML}</select>
+        <select id="targetPickYear"  style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">${yearSelectHTML}</select>
+        <span class="muted" style="font-size:10.5px;">independen dari filter periode di atas. Default: bulan ini.</span>
+        <span style="margin-left:auto;font-size:10.5px;color:#64748b;">Channel: <strong>${state.channel}</strong></span>
+      </div>`;
+
     wrap.innerHTML = `
+      ${pickerBar}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
         <div style="min-width:0;">${achievedCard}</div>
         <div style="min-width:0;">${notYetCard}</div>
       </div>
       ${untrackedCard}`;
+
+    // Wire picker change → update state + re-render
+    const monthSel = document.getElementById('targetPickMonth');
+    const yearSel  = document.getElementById('targetPickYear');
+    const onPickerChange = () => {
+      const y = parseInt(yearSel.value, 10);
+      const m = parseInt(monthSel.value, 10);
+      // Clamp: kalau pilih bulan future di year sekarang → fallback ke bulan saat ini
+      if (y === curYear && m > curMonth) {
+        state.targetCurrentMonth = { year: y, month: curMonth };
+      } else {
+        state.targetCurrentMonth = { year: y, month: m };
+      }
+      renderTarget();
+    };
+    if (monthSel) monthSel.onchange = onPickerChange;
+    if (yearSel)  yearSel.onchange  = onPickerChange;
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;
   }

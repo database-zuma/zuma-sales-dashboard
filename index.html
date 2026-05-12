@@ -858,6 +858,7 @@ table.data tfoot td {
         <div class="card-title">Semua Artikel (Kode Kecil)</div>
         <span class="muted" id="produkTopCount" style="font-size:10px;">—</span>
         <input type="text" id="produkTopSearch" placeholder="Cari kode kecil / nama / gender / series…" style="margin-left:auto;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:11.5px;width:280px;font-family:inherit;" autocomplete="off">
+        <button class="btn-ghost" id="btnProdukXlsx" title="Export Excel: summary kode_kecil + breakdown per size">Excel</button>
         <span class="muted" style="font-size:10px;">klik baris untuk breakdown per size</span>
       </div>
       <div class="table-wrap" style="max-height:560px;overflow:auto;">
@@ -1097,7 +1098,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.95';
+const APP_VERSION = 'v1.96';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1528,15 +1529,12 @@ function escapeHtml(s) {
 // === XLSX export helper — dark navy header, no gridlines, freeze top row ===
 // Usage: await exportToXlsx({ filename, sheetName, headers:[...], rows:[[...], ...],
 //                            columnWidths:[{wch:14},...], numericCols:[3,4,5,6,7,8] })
-async function exportToXlsx({ filename, sheetName, headers, rows, columnWidths, numericCols, percentCols, decimalCols }) {
+async function exportToXlsx(opts) {
   if (typeof XLSX === 'undefined') {
     try { await window.ensureXlsx(); }
     catch (e) { alert('Gagal load library Excel. Cek koneksi internet.'); throw e; }
   }
-  const aoa = [headers].concat(rows);
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
   const NAVY = '002A3A', WHITE = 'FFFFFF';
-  // Header styling: dark navy bg, white bold text, centered, light border
   const headerStyle = {
     font: { bold: true, color: { rgb: WHITE }, sz: 10 },
     fill: { patternType: 'solid', fgColor: { rgb: NAVY } },
@@ -1548,44 +1546,50 @@ async function exportToXlsx({ filename, sheetName, headers, rows, columnWidths, 
       right:  { style: 'thin', color: { rgb: '003C53' } }
     }
   };
-  for (let c = 0; c < headers.length; c++) {
-    const addr = XLSX.utils.encode_cell({ r: 0, c });
-    if (ws[addr]) ws[addr].s = headerStyle;
-  }
-  // Body cells — number formatting + alignment
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const numericSet = new Set(numericCols || []);
-  const percentSet = new Set(percentCols || []);
-  const decimalSet = new Set(decimalCols || []);
-  for (let r = 1; r <= range.e.r; r++) {
-    for (let c = 0; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-      const isNum = numericSet.has(c) || percentSet.has(c) || decimalSet.has(c);
-      const cellStyle = {
-        alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
-        border: { bottom: { style: 'hair', color: { rgb: 'E5E7EB' } } }
-      };
-      if (decimalSet.has(c)) {
-        cell.t = 'n';
-        cell.z = '#,##0.00';  // 2 decimal places — buat ATU/UPT
-      } else if (numericSet.has(c)) {
-        cell.t = 'n';
-        cell.z = '#,##0';
-      } else if (percentSet.has(c)) {
-        cell.t = 'n';
-        cell.z = '0.0"%"';
-      }
-      cell.s = cellStyle;
+  function buildSheet({ sheetName, headers, rows, columnWidths, numericCols, percentCols, decimalCols }) {
+    const aoa = [headers].concat(rows);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c });
+      if (ws[addr]) ws[addr].s = headerStyle;
     }
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const numericSet = new Set(numericCols || []);
+    const percentSet = new Set(percentCols || []);
+    const decimalSet = new Set(decimalCols || []);
+    for (let r = 1; r <= range.e.r; r++) {
+      for (let c = 0; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr];
+        if (!cell) continue;
+        const isNum = numericSet.has(c) || percentSet.has(c) || decimalSet.has(c);
+        const cellStyle = {
+          alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
+          border: { bottom: { style: 'hair', color: { rgb: 'E5E7EB' } } }
+        };
+        if (decimalSet.has(c))      { cell.t = 'n'; cell.z = '#,##0.00'; }
+        else if (numericSet.has(c)) { cell.t = 'n'; cell.z = '#,##0'; }
+        else if (percentSet.has(c)) { cell.t = 'n'; cell.z = '0.0"%"'; }
+        cell.s = cellStyle;
+      }
+    }
+    if (columnWidths) ws['!cols'] = columnWidths;
+    ws['!views'] = [{ state: 'frozen', xSplit: 0, ySplit: 1, showGridLines: false }];
+    return ws;
   }
-  if (columnWidths) ws['!cols'] = columnWidths;
-  // Freeze top row + hide gridlines
-  ws['!views'] = [{ state: 'frozen', xSplit: 0, ySplit: 1, showGridLines: false }];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Data').slice(0, 31));
-  XLSX.writeFile(wb, filename);
+  if (Array.isArray(opts.sheets) && opts.sheets.length) {
+    // Multi-sheet mode
+    opts.sheets.forEach(s => {
+      const ws = buildSheet(s);
+      XLSX.utils.book_append_sheet(wb, ws, (s.sheetName || 'Sheet').slice(0, 31));
+    });
+  } else {
+    // Single-sheet mode (legacy)
+    const ws = buildSheet(opts);
+    XLSX.utils.book_append_sheet(wb, ws, (opts.sheetName || 'Data').slice(0, 31));
+  }
+  XLSX.writeFile(wb, opts.filename);
 }
 
 // Title-case entity names that come in all-lowercase from the source
@@ -2170,9 +2174,11 @@ function renderProdukTopTable(data) {
       renderProdukTopTable(data);
     };
   });
-  // Wire search input + sort headers once
+  // Wire search input + sort headers + Excel export once
   produkState._lastData = data;
   if (!produkState._searchWired) {
+    const xlsxBtn = document.getElementById('btnProdukXlsx');
+    if (xlsxBtn) xlsxBtn.onclick = () => exportProdukXlsx(produkState._lastData);
     const inp = document.getElementById('produkTopSearch');
     if (inp) {
       let t = null;
@@ -2198,6 +2204,77 @@ function renderProdukTopTable(data) {
     });
     produkState._searchWired = true;
   }
+}
+
+async function exportProdukXlsx(data) {
+  if (!data) { alert('Data belum siap.'); return; }
+  const all = (data.rankByKodeKecil || []);
+  const q = (produkState.searchQ || '').trim().toLowerCase();
+  let rank = q ? all.filter(r => {
+    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'')).toLowerCase();
+    return hay.indexOf(q) !== -1;
+  }) : all.slice();
+  // Sort sesuai sort state aktif
+  const sf = produkState.sortField || 'pairs';
+  const dir = produkState.sortDir === 'asc' ? 1 : -1;
+  rank.sort((a, b) => ((Number(a[sf])||0) - (Number(b[sf])||0)) * dir);
+
+  // Sheet 1: Summary per kode_kecil
+  const summaryHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Sizes', 'Pairs', 'Revenue'];
+  const summaryRows = rank.map((r, i) => [
+    i + 1,
+    String(r.kode_kecil || '').toUpperCase(),
+    String(r.product_name || ''),
+    String(r.gender || ''),
+    String(r.series || ''),
+    String(r.tier || ''),
+    Number(r.n_sizes) || 0,
+    Number(r.pairs) || 0,
+    Number(r.revenue) || 0,
+  ]);
+
+  // Sheet 2: Per Size detail (flattened)
+  const sizeHeaders = ['#', 'Kode Kecil', 'Kode Barang', 'Nama', 'Gender', 'Series', 'Tier', 'Size', 'Pairs', 'Revenue'];
+  const sizeRows = [];
+  let idx = 1;
+  rank.forEach(r => {
+    const sizes = (r.sizes || []).slice().sort((a, b) => (b.pairs || 0) - (a.pairs || 0));
+    sizes.forEach(s => {
+      sizeRows.push([
+        idx++,
+        String(r.kode_kecil || '').toUpperCase(),
+        String(s.kode_besar || ''),
+        String(r.product_name || ''),
+        String(r.gender || ''),
+        String(r.series || ''),
+        String(r.tier || ''),
+        String(s.size || ''),
+        Number(s.pairs) || 0,
+        Number(s.revenue) || 0,
+      ]);
+    });
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  await exportToXlsx({
+    filename: `produk-artikel-${state.channel}-${state.from}-${state.to}.xlsx`,
+    sheets: [
+      {
+        sheetName: 'Summary',
+        headers: summaryHeaders,
+        rows: summaryRows,
+        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},{wch:10},{wch:14}],
+        numericCols: [0, 6, 7, 8],
+      },
+      {
+        sheetName: 'Per Size',
+        headers: sizeHeaders,
+        rows: sizeRows,
+        columnWidths: [{wch:5},{wch:14},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},{wch:10},{wch:14}],
+        numericCols: [0, 8, 9],
+      },
+    ],
+  });
 }
 
 function renderProduk(data) {
@@ -3472,7 +3549,8 @@ async function renderTarget() {
         <select id="targetPickMonth" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">${monthSelectHTML}</select>
         <select id="targetPickYear"  style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">${yearSelectHTML}</select>
         <span class="muted" style="font-size:10.5px;">independen dari filter periode di atas. Default: bulan ini.</span>
-        <span style="margin-left:auto;font-size:10.5px;color:#64748b;">Channel: <strong>${state.channel}</strong></span>
+        <button class="btn-ghost" id="btnTargetCurrentXlsx" style="margin-left:auto;" title="Export Excel: Sudah Achieve + Belum Achieve">Excel</button>
+        <span style="font-size:10.5px;color:#64748b;">Channel: <strong>${state.channel}</strong></span>
       </div>`;
 
     wrap.innerHTML = `
@@ -3499,6 +3577,70 @@ async function renderTarget() {
     };
     if (monthSel) monthSel.onchange = onPickerChange;
     if (yearSel)  yearSel.onchange  = onPickerChange;
+    // Wire Excel export — closure access ke tracked/untracked/_timePct/_elapsedDays/etc
+    const xlsxBtn = document.getElementById('btnTargetCurrentXlsx');
+    if (xlsxBtn) xlsxBtn.onclick = async () => {
+      const headers = ['#', 'Toko', 'Area', 'Target', 'Revenue', 'Qty', 'Achv %',
+                       'Pace Gap (pp)', 'Δ Rp', 'Forecast', 'Proj %', 'Status'];
+      const buildRow = (r, i, status) => {
+        const pct = r.target ? (r.actualRev / r.target * 100) : 0;
+        let pace = '', deltaRp = '', forecast = '', projPct = '';
+        if (_showPace && r.target) {
+          pace = pct - _timePct;
+          const expectedRev = r.target * (_elapsedDays / _totalDays);
+          deltaRp = r.actualRev - expectedRev;
+        }
+        if (_showForecast && r.target) {
+          const pace_daily = r.actualRev / _elapsedDays;
+          forecast = pace_daily * _totalDays;
+          projPct = forecast / r.target * 100;
+        } else if (r.target) {
+          forecast = r.actualRev;
+          projPct = pct;
+        }
+        return [
+          i + 1,
+          String(r.storeName || ''),
+          String(r.area || '-'),
+          Number(r.target) || 0,
+          Number(r.actualRev) || 0,
+          Number(r.actualQty) || 0,
+          Number(pct) || 0,
+          pace === '' ? '' : Number(pace) || 0,
+          deltaRp === '' ? '' : Number(deltaRp) || 0,
+          forecast === '' ? '' : Number(forecast) || 0,
+          projPct === '' ? '' : Number(projPct) || 0,
+          status,
+        ];
+      };
+      // Combined sheet — achieved + notYet + untracked sequential, with Status col
+      const rows = [];
+      let counter = 1;
+      achieved.forEach(r => rows.push(buildRow(r, counter++ - 1, 'Sudah Achieve')));
+      notYet.forEach(r => rows.push(buildRow(r, counter++ - 1, 'Belum Achieve')));
+      untracked.forEach(r => rows.push([
+        counter++ - 1 + 1,
+        String(r.storeName || ''),
+        String(r.area || '-'),
+        '', // no target
+        Number(r.actualRev) || 0,
+        Number(r.actualQty) || 0,
+        '', '', '', '', '',
+        'No Target',
+      ]));
+      const MONTH_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+      await exportToXlsx({
+        filename: `target-${state.channel}-${MONTH_ID[pickM-1]}-${pickY}.xlsx`,
+        sheetName: `Target ${MONTH_ID[pickM-1]} ${pickY}`,
+        headers,
+        rows,
+        columnWidths: [{wch:5},{wch:34},{wch:14},{wch:14},{wch:14},{wch:10},{wch:10},
+                       {wch:14},{wch:14},{wch:14},{wch:10},{wch:16}],
+        numericCols: [0, 3, 4, 5, 8, 9],         // Target, Revenue, Qty, Δ Rp, Forecast
+        decimalCols: [7],                          // Pace Gap (decimal)
+        percentCols: [6, 10],                      // Achv %, Proj %
+      });
+    };
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;
   }

@@ -1092,7 +1092,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.90';
+const APP_VERSION = 'v1.91';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3928,8 +3928,11 @@ async function renderRefund() {
     const totRev = state.rawData && state.rawData.kpis ? (state.rawData.kpis.revenue || 0) : 0;
     const refundRate = totRev ? (summary.refund_value / totRev * 100) : 0;
 
-    // Cache detail untuk drill-down click (article breakdown per toko)
-    window._refundDetail = data.detail || [];
+    // Cache detail untuk drill-down click — sinkron sama filter NON-SKU di tabel utama
+    const rawDetail = data.detail || [];
+    window._refundDetail = sandalOnly
+      ? rawDetail.filter(r => !NON_SKU_RX.test(`${r.article || ''} ${r.sku || ''}`))
+      : rawDetail;
     const rowHtml = (arr, primary, secondary, opts) => {
       const drillByToko = opts && opts.drillByToko;
       return (arr || []).slice(0, 50).map(r => {

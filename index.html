@@ -1098,7 +1098,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.96';
+const APP_VERSION = 'v1.97';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2220,7 +2220,7 @@ async function exportProdukXlsx(data) {
   rank.sort((a, b) => ((Number(a[sf])||0) - (Number(b[sf])||0)) * dir);
 
   // Sheet 1: Summary per kode_kecil
-  const summaryHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Sizes', 'Pairs', 'Revenue'];
+  const summaryHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Pairs', 'Revenue'];
   const summaryRows = rank.map((r, i) => [
     i + 1,
     String(r.kode_kecil || '').toUpperCase(),
@@ -2228,7 +2228,6 @@ async function exportProdukXlsx(data) {
     String(r.gender || ''),
     String(r.series || ''),
     String(r.tier || ''),
-    Number(r.n_sizes) || 0,
     Number(r.pairs) || 0,
     Number(r.revenue) || 0,
   ]);
@@ -2263,8 +2262,8 @@ async function exportProdukXlsx(data) {
         sheetName: 'Summary',
         headers: summaryHeaders,
         rows: summaryRows,
-        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},{wch:10},{wch:14}],
-        numericCols: [0, 6, 7, 8],
+        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:10},{wch:14}],
+        numericCols: [0, 6, 7],
       },
       {
         sheetName: 'Per Size',

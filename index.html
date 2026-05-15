@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.02';
+const APP_VERSION = 'v2.03';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3315,7 +3315,7 @@ async function fetchCompareBarFull(bar) {
   const from = `${year}-${pad(month)}-01`;
   const to   = `${year}-${pad(month)}-${pad(monthEnd)}`;
   const restoreState = _forecastStateOverride();
-  const blank = { total: 0, byEntity: [], byGender: [], bySeries: [], isTarget: false };
+  const blank = { total: 0, revenue: 0, pairs: 0, transactions: 0, byEntity: [], byGender: [], bySeries: [], isTarget: false };
 
   try {
     if (metric === 'target') {
@@ -3329,6 +3329,11 @@ async function fetchCompareBarFull(bar) {
         const wantedAreas = state.forecastArea.map(normalize);
         targets = targets.filter(t => !t.area || wantedAreas.includes(normalize(t.area)));
       }
+      // Top toko filter (state.store) juga apply
+      if (Array.isArray(state.store) && state.store.length) {
+        const wantedStores = state.store.map(normalize);
+        targets = targets.filter(t => wantedStores.includes(normalize(t.store || t.toko)));
+      }
       const MONTH_KEY = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'][month - 1];
       const totalTarget = targets.reduce((s, t) => s + (Number(t[MONTH_KEY]) || 0), 0);
       const byEntity = targets.map(t => ({
@@ -3336,13 +3341,15 @@ async function fetchCompareBarFull(bar) {
         area: t.area || '-',
         value: Number(t[MONTH_KEY]) || 0,
       })).filter(e => e.value > 0).sort((a,b) => b.value - a.value);
-      return { total: totalTarget, byEntity, byGender: [], bySeries: [], isTarget: true };
+      return { total: totalTarget, revenue: totalTarget, pairs: 0, transactions: 0, byEntity, byGender: [], bySeries: [], isTarget: true };
     }
 
     const chData = await loadChannel('retail', from, to, { group: `compare-retail-${year}-${month}` });
     const kpis = chData.kpis || {};
+    const revenue = Number(kpis.revenue) || 0;
+    const pairs = Number(kpis.pairs) || 0;
+    const transactions = Number(kpis.transactions) || 0;
     if (metric === 'achv') {
-      // Achv = revenue / target. Fetch target juga (jangan re-fetch, paralel di caller)
       const targetData = await fetchAPI(`/api/targets?year=${year}`, { group: `compare-tgt-${year}` });
       const rawT = Array.isArray(targetData) ? targetData
         : Object.values(targetData || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
@@ -3352,11 +3359,15 @@ async function fetchCompareBarFull(bar) {
         const wantedAreas = state.forecastArea.map(normalize);
         targets = targets.filter(t => !t.area || wantedAreas.includes(normalize(t.area)));
       }
+      if (Array.isArray(state.store) && state.store.length) {
+        const wantedStores = state.store.map(normalize);
+        targets = targets.filter(t => wantedStores.includes(normalize(t.store || t.toko)));
+      }
       const MONTH_KEY = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'][month - 1];
       const totalTarget = targets.reduce((s, t) => s + (Number(t[MONTH_KEY]) || 0), 0);
-      const rev = Number(kpis.revenue) || 0;
       return {
-        total: totalTarget ? (rev / totalTarget * 100) : 0,
+        total: totalTarget ? (revenue / totalTarget * 100) : 0,
+        revenue, pairs, transactions,
         byEntity: (chData.byEntity || []).map(r => ({ name: r.name, area: r.area, value: Number(r.revenue) || 0 })),
         byGender: (chData.byGender || []).map(r => ({ name: r.name, value: Number(r.revenue) || 0 })),
         bySeries: (chData.bySeries || []).map(r => ({ name: r.name, value: Number(r.revenue) || 0 })),
@@ -3366,6 +3377,7 @@ async function fetchCompareBarFull(bar) {
     const valueField = metric === 'pairs' ? 'pairs' : 'revenue';
     return {
       total: Number(kpis[valueField]) || 0,
+      revenue, pairs, transactions,
       byEntity: (chData.byEntity || []).map(r => ({ name: r.name, area: r.area, value: Number(r[valueField]) || 0 })),
       byGender: (chData.byGender || []).map(r => ({ name: r.name, value: Number(r[valueField]) || 0 })),
       bySeries: (chData.bySeries || []).map(r => ({ name: r.name, value: Number(r[valueField]) || 0 })),
@@ -3464,6 +3476,7 @@ async function renderCustomCompare() {
         </div>
       </div>
     </div>
+    <div id="forecastKpiSummary" style="margin-top:14px;"></div>
     <div id="forecastBreakdowns" style="margin-top:14px;"></div>`;
 
   // Wire area chips
@@ -3523,10 +3536,11 @@ async function renderCompareChart() {
   const bars = state.customCompareBars || [];
   try {
     // Fire all fetches in parallel — full payload (total + byEntity/Gender/Series)
-    const fullResults = await Promise.all(bars.map(b => fetchCompareBarFull(b).catch(() => ({ total: 0, byEntity: [], byGender: [], bySeries: [], isTarget: false }))));
+    const fullResults = await Promise.all(bars.map(b => fetchCompareBarFull(b).catch(() => ({ total: 0, revenue: 0, pairs: 0, transactions: 0, byEntity: [], byGender: [], bySeries: [], isTarget: false }))));
     const values = fullResults.map(f => f.total);
     const labels = bars.map(b => `${COMPARE_MONTHS_ID[b.month - 1].slice(0,3)} ${b.year} · ${COMPARE_METRICS[b.metric].short}`);
-    // Build breakdown tables
+    // KPI summary (Pairs/ATU/ATV/ARP) + breakdown tables
+    renderForecastKpiSummary(bars, fullResults, labels);
     renderForecastBreakdowns(bars, fullResults, labels);
     const colors = bars.map(b => COMPARE_METRICS[b.metric].color);
 
@@ -3579,10 +3593,101 @@ async function renderCompareChart() {
   }
 }
 
+// Pick historical (non-target) bar indices. Target bars (value=0) skew growth.
+function _historicalIdxs(fullResults) {
+  return fullResults.map((f, i) => f.isTarget ? -1 : i).filter(i => i >= 0);
+}
+function _histGrowthLabel(bars, barLabels, fullResults) {
+  const idx = _historicalIdxs(fullResults);
+  if (idx.length < 2) return 'Δ Growth';
+  const first = barLabels[idx[0]].split(' · ')[0];
+  const last = barLabels[idx[idx.length - 1]].split(' · ')[0];
+  return `Δ ${first} → ${last}`;
+}
+function _computeHistGrowth(vals, fullResults) {
+  const idx = _historicalIdxs(fullResults);
+  if (idx.length < 2) return null;
+  const first = vals[idx[0]];
+  const last = vals[idx[idx.length - 1]];
+  if (!first) return null;
+  return (last - first) / first * 100;
+}
+
+function renderForecastKpiSummary(bars, fullResults, barLabels) {
+  const wrap = document.getElementById('forecastKpiSummary');
+  if (!wrap) return;
+
+  // Compute per-bar derived KPIs. For target bars, ATU/ATV/ARP undefined.
+  const perBar = fullResults.map(f => {
+    if (f.isTarget) return { revenue: f.total, pairs: null, atu: null, atv: null, arp: null };
+    const rev = Number(f.revenue) || 0;
+    const pairs = Number(f.pairs) || 0;
+    const txn = Number(f.transactions) || 0;
+    return {
+      revenue: rev,
+      pairs,
+      atu: txn ? pairs / txn : null,
+      atv: txn ? rev / txn : null,
+      arp: pairs ? rev / pairs : null,
+    };
+  });
+
+  const growthLabel = _histGrowthLabel(bars, barLabels, fullResults);
+  const headerCells = barLabels.map(l => `<th class="right">${escapeHtml(l.split(' · ')[0])}</th>`).join('');
+
+  const rows = [
+    { label: 'Revenue', key: 'revenue', fmt: fmtRpShort },
+    { label: 'Pairs',   key: 'pairs',   fmt: (v) => v == null ? '—' : fmtNum(v) },
+    { label: 'ATU',     key: 'atu',     fmt: (v) => v == null ? '—' : v.toFixed(2) },
+    { label: 'ATV',     key: 'atv',     fmt: (v) => v == null ? '—' : fmtRpShort(v) },
+    { label: 'ARP',     key: 'arp',     fmt: (v) => v == null ? '—' : fmtRpShort(v) },
+  ];
+
+  const bodyRows = rows.map(({label, key, fmt}) => {
+    const vals = perBar.map(b => b[key]);
+    const cells = vals.map(v => `<td class="right">${v == null ? '<span class="muted">—</span>' : fmt(v)}</td>`).join('');
+    // Growth = first-historical → last-historical (skip target bars)
+    const histIdx = _historicalIdxs(fullResults);
+    let growth = null;
+    if (histIdx.length >= 2) {
+      const first = vals[histIdx[0]];
+      const last = vals[histIdx[histIdx.length - 1]];
+      if (first != null && last != null && first !== 0) growth = (last - first) / first * 100;
+    }
+    const growthCell = growth === null
+      ? '<td class="center muted">—</td>'
+      : `<td class="center" style="color:${growth >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${growth >= 0 ? '+' : ''}${growth.toFixed(1)}% ${growth >= 0 ? '▲' : '▼'}</td>`;
+    return `<tr>
+      <td class="strong">${label}</td>
+      ${cells}
+      ${growthCell}
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">KPI Summary · Retail</div>
+        <span class="muted" style="font-size:10px;">Growth dihitung dari bar historical pertama → bar historical terakhir (target di-skip)</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>
+            <th>Metric</th>
+            ${headerCells}
+            <th class="center">${escapeHtml(growthLabel)}</th>
+          </tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 function renderForecastBreakdowns(bars, fullResults, barLabels) {
   const wrap = document.getElementById('forecastBreakdowns');
   if (!wrap) return;
   const normalize = s => String(s || '').toLowerCase().trim();
+  const growthLabel = _histGrowthLabel(bars, barLabels, fullResults);
 
   function buildDimTable(title, dimKey) {
     // Collect unique names across all bars
@@ -3593,22 +3698,24 @@ function renderForecastBreakdowns(bars, fullResults, barLabels) {
     }));
     if (!allNames.size) return '';
 
-    // Build rows: name + value per bar + growth (last bar vs avg of earlier bars)
+    // Build rows: name + value per bar + growth (first-historical → last-historical)
     const rows = Array.from(allNames.entries()).map(([key, displayName]) => {
       const vals = fullResults.map(f => {
         const found = (f[dimKey] || []).find(r => normalize(r.name) === key);
         return found ? Number(found.value) || 0 : 0;
       });
-      const lastBar = vals[vals.length - 1];
-      const histAvg = vals.length > 1 ? vals.slice(0, -1).reduce((s, v) => s + v, 0) / (vals.length - 1) : 0;
-      const growth = histAvg ? ((lastBar - histAvg) / histAvg * 100) : null;
-      return { name: displayName, vals, growth, total: vals.reduce((s, v) => s + v, 0) };
-    }).filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+      const growth = _computeHistGrowth(vals, fullResults);
+      // Sort by historical total (exclude target) so target=0 doesn't drop rows
+      const histIdx = _historicalIdxs(fullResults);
+      const sortTotal = histIdx.length
+        ? histIdx.reduce((s, i) => s + vals[i], 0)
+        : vals.reduce((s, v) => s + v, 0);
+      return { name: displayName, vals, growth, sortTotal };
+    }).filter(r => r.sortTotal > 0).sort((a, b) => b.sortTotal - a.sortTotal);
 
     if (!rows.length) return '';
 
     const headerCells = bars.map((b, i) => {
-      const fmt = COMPARE_METRICS[b.metric].fmt;
       const label = barLabels[i];
       return `<th class="right">${escapeHtml(label)}</th>`;
     }).join('');
@@ -3637,7 +3744,7 @@ function renderForecastBreakdowns(bars, fullResults, barLabels) {
               <th class="center" style="width:30px;">#</th>
               <th>${escapeHtml(title.replace('Per ', ''))}</th>
               ${headerCells}
-              <th class="center" title="% perubahan bar terakhir vs avg bar-bar sebelumnya">Δ vs avg historical</th>
+              <th class="center" title="% perubahan dari bar historical pertama ke bar historical terakhir (target di-skip)">${escapeHtml(growthLabel)}</th>
             </tr></thead>
             <tbody>${bodyRows}</tbody>
           </table>

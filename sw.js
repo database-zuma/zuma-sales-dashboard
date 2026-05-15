@@ -1,10 +1,13 @@
 // Zuma Sales Dashboard — Service Worker
 // Caching strategy:
-//   - Static (HTML/JS/CSS/fonts) → cache-first (instant load)
+//   - HTML                       → stale-while-revalidate (instant + always pull
+//                                  latest in BG → fresh code visible on next visit)
+//   - Static assets (JS/CSS/etc) → cache-first (versioned via CDN URL anyway)
 //   - API (/api/*)               → stale-while-revalidate (instant + auto-update)
 //
-// Cache busts on VERSION bump. Update VERSION on every dashboard release.
-const VERSION = 'v1.71';
+// IMPORTANT: bump VERSION every release so old caches (especially HTML) get nuked
+// via the activate handler. Match APP_VERSION di index.html biar gampang trace.
+const VERSION = 'v1.98';
 const STATIC_CACHE = `zuma-static-${VERSION}`;
 const API_CACHE    = `zuma-api-${VERSION}`;
 
@@ -43,8 +46,14 @@ self.addEventListener('fetch', (event) => {
   if (request.headers.get('Cache-Control') === 'no-cache') return;
 
   const isApi = url.pathname.startsWith('/api/');
+  // Treat HTML doc requests as SWR juga supaya code update (APP_VERSION bump)
+  // landing di user tanpa harus hard-refresh. JS/CSS lain tetap cache-first
+  // karena versioned via CDN URL.
+  const isHtml = request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');
   if (isApi) {
     event.respondWith(staleWhileRevalidate(request, API_CACHE));
+  } else if (isHtml) {
+    event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
   } else {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
   }

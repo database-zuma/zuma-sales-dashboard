@@ -752,6 +752,7 @@ table.data tfoot td {
     <button class="tab-btn" data-tab="outlet">Outlet</button>
     <button class="tab-btn" data-tab="produk">Produk</button>
     <button class="tab-btn" data-tab="growth">Growth</button>
+    <button class="tab-btn" data-tab="forecast">Forecast</button>
     <button class="tab-btn" data-tab="trend">Trend</button>
     <button class="tab-btn" data-tab="hourly">Hourly</button>
     <button class="tab-btn" data-tab="spg">SPG</button>
@@ -1049,6 +1050,10 @@ table.data tfoot td {
     <div id="growthContent"><div class="loading"><div class="spinner"></div>Memuat growth…</div></div>
   </section>
 
+  <section class="tab-content" id="tab-forecast">
+    <div id="forecastContent"><div class="loading"><div class="spinner"></div>Memuat forecast…</div></div>
+  </section>
+
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-dot"></div>
@@ -1098,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.00';
+const APP_VERSION = 'v2.01';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3180,10 +3185,7 @@ async function renderGrowth() {
       ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
       ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
       ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
-      <div id="customCompareSection" style="margin-top:14px;"></div>
     `;
-    // Render custom comparison section
-    renderCustomCompare();
     // Wire drill-down clicks pada baris toko (byStore table)
     wrap.querySelectorAll('tr[data-drill-store]').forEach(tr => {
       tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
@@ -3327,8 +3329,12 @@ async function fetchCompareBarValue(bar) {
 
 let _compareChart = null;
 
+async function renderForecast() {
+  return renderCustomCompare();
+}
+
 async function renderCustomCompare() {
-  const wrap = document.getElementById('customCompareSection');
+  const wrap = document.getElementById('forecastContent') || document.getElementById('customCompareSection');
   if (!wrap) return;
   if (!state.customCompareBars) {
     // Default 3 bar mirip contoh user
@@ -5029,6 +5035,7 @@ function renderActiveTab(data) {
     }
     else if (tab === 'refund') renderRefund();   // lazy fetch
     else if (tab === 'growth') renderGrowth();   // lazy fetch (2 periods)
+    else if (tab === 'forecast') renderForecast(); // lazy fetch (custom periods)
   } catch (e) { console.error('renderActiveTab', tab, e); }
 }
 

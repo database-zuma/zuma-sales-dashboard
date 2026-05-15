@@ -1098,7 +1098,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.97';
+const APP_VERSION = 'v1.98';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2938,7 +2938,10 @@ async function renderGrowth() {
       curTo = state.to;
       prevFrom = _shiftDateYear(state.from, -1);
       prevTo = _shiftDateYear(state.to, -1);
-      curData = state.rawData || {};
+      // Always re-fetch curData supaya nggak bergantung ke state.rawData yang
+      // belum siap saat first paint cold (initial loadChannel masih in-flight).
+      // Konsisten juga sama MoM/WoW yang sudah fetch sendiri.
+      curData = await loadChannel(state.channel, curFrom, curTo, { group: 'growth-cur-yoy' });
     } else if (isMom) {
       // MoM smart auto-detect
       const today = new Date();
@@ -4824,8 +4827,10 @@ function setupEvents() {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-      // Render the tab content using already-loaded payload (no refetch)
-      if (state.rawData) renderActiveTab(state.rawData);
+      // Render the tab content. Tabs yang punya fetch sendiri (target/quarterly,
+      // refund, growth dengan MoM/WoW) tetap bisa render walau state.rawData
+      // belum siap. renderActiveTab handle kasus state.rawData kosong sendiri.
+      renderActiveTab(state.rawData || {});
     };
   });
 

@@ -1098,7 +1098,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.99';
+const APP_VERSION = 'v2.00';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3180,7 +3180,10 @@ async function renderGrowth() {
       ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
       ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
       ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
+      <div id="customCompareSection" style="margin-top:14px;"></div>
     `;
+    // Render custom comparison section
+    renderCustomCompare();
     // Wire drill-down clicks pada baris toko (byStore table)
     wrap.querySelectorAll('tr[data-drill-store]').forEach(tr => {
       tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
@@ -3279,6 +3282,200 @@ function targetFuzzyMatch(a, b) {
   if (inter / smaller >= 0.75 && inter / larger >= 0.75) return true;
   if (inter / smaller >= 0.5 && _similarityRatio(na, nb) >= 0.95) return true;
   return false;
+}
+
+// ============ CUSTOM COMPARISON (Growth tab section) ============
+// User pilih sendiri N bar — tiap bar = (bulan, tahun, metric). Chart bar
+// horizontal/vertical comparing arbitrary periods. Default 3 bar.
+const COMPARE_MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const COMPARE_METRICS = {
+  revenue: { label: 'Revenue', short: 'Rev', fmt: (v) => fmtRpShort(v), color: '#002A3A' },
+  pairs:   { label: 'Pairs',   short: 'Qty', fmt: (v) => fmtNum(v),     color: '#00E273' },
+  target:  { label: 'Target',  short: 'Tgt', fmt: (v) => fmtRpShort(v), color: '#D4A24C' },
+  achv:    { label: 'Achv %',  short: 'A%',  fmt: (v) => v.toFixed(1) + '%', color: '#8b5cf6' },
+};
+
+async function fetchCompareBarValue(bar) {
+  const { month, year, metric } = bar;
+  const pad = (n) => String(n).padStart(2, '0');
+  const monthEnd = new Date(year, month, 0).getDate();
+  const from = `${year}-${pad(month)}-01`;
+  const to   = `${year}-${pad(month)}-${pad(monthEnd)}`;
+
+  // Target / Achv mode — pakai /api/targets endpoint
+  if (metric === 'target' || metric === 'achv') {
+    const data = await fetchAPI(`/api/targets?year=${year}`, { group: `compare-tgt-${year}` });
+    const rawTargets = Array.isArray(data) ? data
+      : Object.values(data || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
+    const normalize = s => String(s || '').toLowerCase().trim();
+    const targets = rawTargets.filter(t => !TARGET_AREA_ROLLUPS.has(normalize(t.store || t.toko)));
+    const MONTH_KEY = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'][month - 1];
+    const totalTarget = targets.reduce((s, t) => s + (Number(t[MONTH_KEY]) || 0), 0);
+    if (metric === 'target') return totalTarget;
+    // Achv: revenue / target * 100
+    if (!totalTarget) return 0;
+    const chData = await loadChannel(state.channel, from, to, { group: `compare-${state.channel}-${year}-${month}` });
+    const rev = Number((chData.kpis || {}).revenue) || 0;
+    return totalTarget ? (rev / totalTarget * 100) : 0;
+  }
+
+  // Revenue / Pairs — pakai loadChannel
+  const chData = await loadChannel(state.channel, from, to, { group: `compare-${state.channel}-${year}-${month}` });
+  const kpis = chData.kpis || {};
+  return Number(kpis[metric === 'pairs' ? 'pairs' : 'revenue']) || 0;
+}
+
+let _compareChart = null;
+
+async function renderCustomCompare() {
+  const wrap = document.getElementById('customCompareSection');
+  if (!wrap) return;
+  if (!state.customCompareBars) {
+    // Default 3 bar mirip contoh user
+    state.customCompareBars = [
+      { month: 4, year: 2025, metric: 'revenue' },
+      { month: 9, year: 2025, metric: 'revenue' },
+      { month: 6, year: 2026, metric: 'target' },
+    ];
+  }
+  const bars = state.customCompareBars;
+  const curYear = new Date().getFullYear();
+  const yearOpts = [curYear - 2, curYear - 1, curYear];
+
+  // Build bar config UI
+  const barRows = bars.map((b, i) => {
+    const monthSel = COMPARE_MONTHS_ID.map((nm, idx) => {
+      const m = idx + 1;
+      const disabled = (b.year === curYear && m > (new Date()).getMonth() + 1 && b.metric !== 'target') ? 'disabled' : '';
+      return `<option value="${m}" ${disabled} ${m === b.month ? 'selected' : ''}>${nm}</option>`;
+    }).join('');
+    const yearSel = yearOpts.map(y =>
+      `<option value="${y}" ${y === b.year ? 'selected' : ''}>${y}</option>`).join('');
+    const metricSel = Object.entries(COMPARE_METRICS).map(([k, v]) =>
+      `<option value="${k}" ${k === b.metric ? 'selected' : ''}>${v.label}</option>`).join('');
+    return `
+      <div class="compare-bar-row" data-bar-idx="${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="font-size:10px;color:#94a3b8;font-weight:700;min-width:36px;">Bar ${i+1}</span>
+        <select data-field="month" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:11.5px;">${monthSel}</select>
+        <select data-field="year"  style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:11.5px;">${yearSel}</select>
+        <select data-field="metric" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:11.5px;">${metricSel}</select>
+        <button class="btn-ghost compare-remove" style="padding:4px 10px;font-size:11px;color:#dc2626;" title="Hapus bar ini">×</button>
+      </div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="card-title">🆚 Custom Comparison</div>
+        <span class="muted" style="font-size:10px;">Bandingkan revenue / pairs / target arbitrary periode</span>
+        <span style="margin-left:auto;display:flex;gap:6px;">
+          <button id="compareAddBar" class="btn-ghost" style="font-size:11.5px;padding:6px 12px;">+ Tambah Bar</button>
+          <button id="compareRender" class="btn-primary" style="font-size:11.5px;padding:6px 14px;background:#002A3A;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Render Chart</button>
+        </span>
+      </div>
+      <div class="card-body" style="padding:14px;">
+        <div id="compareBarsList">${barRows}</div>
+        <div style="height:340px;position:relative;margin-top:12px;border-top:1px solid var(--border-soft);padding-top:14px;">
+          <canvas id="compareChartCanvas"></canvas>
+          <div id="compareChartEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">Klik "Render Chart" untuk mulai</div>
+        </div>
+      </div>
+    </div>`;
+
+  // Wire change handlers — update state.customCompareBars in place
+  wrap.querySelectorAll('.compare-bar-row select').forEach(sel => {
+    sel.onchange = () => {
+      const row = sel.closest('.compare-bar-row');
+      const idx = Number(row.dataset.barIdx);
+      const field = sel.dataset.field;
+      let val = sel.value;
+      if (field === 'month' || field === 'year') val = parseInt(val, 10);
+      state.customCompareBars[idx][field] = val;
+    };
+  });
+  // Remove bar
+  wrap.querySelectorAll('.compare-remove').forEach(btn => {
+    btn.onclick = () => {
+      const row = btn.closest('.compare-bar-row');
+      const idx = Number(row.dataset.barIdx);
+      if (state.customCompareBars.length <= 1) { alert('Minimal 1 bar.'); return; }
+      state.customCompareBars.splice(idx, 1);
+      renderCustomCompare();
+    };
+  });
+  // Add bar
+  document.getElementById('compareAddBar').onclick = () => {
+    if (state.customCompareBars.length >= 8) { alert('Maksimal 8 bar.'); return; }
+    state.customCompareBars.push({ month: (new Date()).getMonth() + 1, year: curYear, metric: 'revenue' });
+    renderCustomCompare();
+  };
+  // Render chart button
+  document.getElementById('compareRender').onclick = renderCompareChart;
+}
+
+async function renderCompareChart() {
+  const btn = document.getElementById('compareRender');
+  const canvas = document.getElementById('compareChartCanvas');
+  const emptyEl = document.getElementById('compareChartEmpty');
+  if (!canvas) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  if (emptyEl) emptyEl.style.display = '';
+  if (emptyEl) emptyEl.textContent = 'Fetching periode…';
+
+  const bars = state.customCompareBars || [];
+  try {
+    // Fire all fetches in parallel
+    const values = await Promise.all(bars.map(b => fetchCompareBarValue(b).catch(() => 0)));
+    const labels = bars.map(b => `${COMPARE_MONTHS_ID[b.month - 1].slice(0,3)} ${b.year} · ${COMPARE_METRICS[b.metric].short}`);
+    const colors = bars.map(b => COMPARE_METRICS[b.metric].color);
+
+    if (_compareChart) { try { _compareChart.destroy(); } catch {} _compareChart = null; }
+    if (emptyEl) emptyEl.style.display = 'none';
+    const ctx = canvas.getContext('2d');
+    _compareChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors.map(c => c + 'dd'),
+          borderColor: colors,
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#002A3A', padding: 12, titleFont: { size: 13, weight: '700' }, bodyFont: { size: 11 },
+            callbacks: {
+              label: (ctx) => {
+                const b = bars[ctx.dataIndex];
+                const mLabel = COMPARE_METRICS[b.metric].label;
+                const v = values[ctx.dataIndex];
+                return `${mLabel}: ${COMPARE_METRICS[b.metric].fmt(v)}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' } } },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#f1f5f9' },
+            ticks: { font: { size: 9 }, callback: (v) => v >= 1e9 ? (v/1e9).toFixed(1)+'M' : v >= 1e6 ? (v/1e6).toFixed(0)+'jt' : v }
+          }
+        }
+      }
+    });
+  } catch (e) {
+    if (emptyEl) { emptyEl.style.display = ''; emptyEl.textContent = 'Error: ' + (e.message || e); }
+    console.error('compare chart', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Render Chart'; }
+  }
 }
 
 async function renderTarget() {

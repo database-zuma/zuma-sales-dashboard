@@ -1098,7 +1098,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v1.98';
+const APP_VERSION = 'v1.99';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3144,6 +3144,39 @@ async function renderGrowth() {
           <div class="kpi-sub">${fmtNum(prevQty)} → ${fmtNum(curQty)} pairs</div>
         </div>
       </div>
+      ${(state.channel === 'retail' || state.channel === 'event') ? (() => {
+        const curTrx = Number(curKpi.transactions) || 0;
+        const prevTrx = Number(prevKpi.transactions) || 0;
+        const curAtu  = curTrx  ? curQty  / curTrx  : 0;
+        const prevAtu = prevTrx ? prevQty / prevTrx : 0;
+        const curAtv  = curTrx  ? curRev  / curTrx  : 0;
+        const prevAtv = prevTrx ? prevRev / prevTrx : 0;
+        const curAsp  = curQty  ? curRev  / curQty  : 0;
+        const prevAsp = prevQty ? prevRev / prevQty : 0;
+        return `
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);max-width:1280px;margin-bottom:14px;">
+          <div class="kpi-card">
+            <div class="kpi-label">Pairs Growth</div>
+            <span class="kpi-value-wrap"><span class="kpi-value">${pctHtml(delta(curQty, prevQty))}</span></span>
+            <div class="kpi-sub">${fmtNum(prevQty)} → ${fmtNum(curQty)}</div>
+          </div>
+          <div class="kpi-card" title="Avg Transaction Units = Pairs / Transactions">
+            <div class="kpi-label">ATU Growth</div>
+            <span class="kpi-value-wrap"><span class="kpi-value">${pctHtml(delta(curAtu, prevAtu))}</span></span>
+            <div class="kpi-sub">${prevAtu.toFixed(2)} → ${curAtu.toFixed(2)} unit/txn</div>
+          </div>
+          <div class="kpi-card" title="Avg Transaction Value = Revenue / Transactions">
+            <div class="kpi-label">ATV Growth</div>
+            <span class="kpi-value-wrap"><span class="kpi-value">${pctHtml(delta(curAtv, prevAtv))}</span></span>
+            <div class="kpi-sub">${fmtRpShort(prevAtv)} → ${fmtRpShort(curAtv)}</div>
+          </div>
+          <div class="kpi-card" title="Avg Selling Price = Revenue / Pairs">
+            <div class="kpi-label">ASP Growth</div>
+            <span class="kpi-value-wrap"><span class="kpi-value">${pctHtml(delta(curAsp, prevAsp))}</span></span>
+            <div class="kpi-sub">${fmtRpShort(prevAsp)} → ${fmtRpShort(curAsp)}</div>
+          </div>
+        </div>`;
+      })() : ''}
       ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
       ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
       ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}

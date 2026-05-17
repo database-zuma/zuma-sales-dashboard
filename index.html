@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.05';
+const APP_VERSION = 'v2.06';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3493,6 +3493,14 @@ async function renderCustomCompare() {
   };
   // Render chart button
   document.getElementById('compareRender').onclick = renderCompareChart;
+
+  // Auto-trigger chart kalau sebelumnya pernah di-render — supaya filter atas
+  // berubah → langsung tampil data baru tanpa user harus klik Render Chart lagi.
+  // Flag di-set di renderCompareChart() saat pertama kali sukses.
+  if (state.forecastChartActive) {
+    // setTimeout 0 supaya DOM sempat ke-attach (canvas tersedia) sebelum chart.js mount.
+    setTimeout(() => { try { renderCompareChart(); } catch (e) { console.warn('auto-render', e); } }, 0);
+  }
 }
 
 async function renderCompareChart() {
@@ -3505,6 +3513,9 @@ async function renderCompareChart() {
   if (emptyEl) emptyEl.textContent = 'Fetching periode…';
 
   const bars = state.customCompareBars || [];
+  // Tandain chart aktif → renderCustomCompare bakal auto-trigger ini lagi
+  // setiap kali filter atas berubah (area/toko/gender/series/tier).
+  state.forecastChartActive = true;
   try {
     // Fire all fetches in parallel — full payload (total + byEntity/Gender/Series)
     const fullResults = await Promise.all(bars.map(b => fetchCompareBarFull(b).catch(() => ({ total: 0, revenue: 0, pairs: 0, transactions: 0, byEntity: [], byGender: [], bySeries: [], isTarget: false }))));

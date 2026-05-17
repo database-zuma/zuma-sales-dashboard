@@ -752,13 +752,13 @@ table.data tfoot td {
     <button class="tab-btn" data-tab="outlet">Outlet</button>
     <button class="tab-btn" data-tab="produk">Produk</button>
     <button class="tab-btn" data-tab="growth">Growth</button>
-    <button class="tab-btn" data-tab="forecast">Forecast</button>
     <button class="tab-btn" data-tab="trend">Trend</button>
     <button class="tab-btn" data-tab="hourly">Hourly</button>
     <button class="tab-btn" data-tab="spg">SPG</button>
     <button class="tab-btn" data-tab="target">Target</button>
     <button class="tab-btn" data-tab="refund">Refund</button>
     <button class="tab-btn" data-tab="promo">Promo</button>
+    <button class="tab-btn" data-tab="forecast">Forecast</button>
   </nav>
 
   <!-- GLOBAL ERROR -->
@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.04';
+const APP_VERSION = 'v2.05';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3298,14 +3298,11 @@ const COMPARE_METRICS = {
 };
 
 // Force RETAIL channel — Forecast hanya untuk retail.
-// Area filter (state.forecastArea) — array of area names, atau null = semua.
+// Filter lain (area/toko/gender/series/tier) pakai filter atas langsung.
 function _forecastStateOverride() {
-  // Temp override state.area buat fetch, lalu restore.
   const savedChannel = state.channel;
-  const savedArea = state.area;
   state.channel = 'retail';
-  if (state.forecastArea && state.forecastArea.length) state.area = state.forecastArea;
-  return () => { state.channel = savedChannel; state.area = savedArea; };
+  return () => { state.channel = savedChannel; };
 }
 
 async function fetchCompareBarFull(bar) {
@@ -3324,12 +3321,12 @@ async function fetchCompareBarFull(bar) {
         : Object.values(data || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
       const normalize = s => String(s || '').toLowerCase().trim();
       let targets = rawTargets.filter(t => !TARGET_AREA_ROLLUPS.has(normalize(t.store || t.toko)));
-      // Area filter — kalau ada forecastArea + target row punya 'area' field, filter
-      if (state.forecastArea && state.forecastArea.length) {
-        const wantedAreas = state.forecastArea.map(normalize);
+      // Apply filter atas: area (expanded supaya "Bali" rollup ke Bali 1/2/3) + toko
+      const topArea = Array.isArray(state.area) ? expandSelectedAreas(state.area) : [];
+      if (topArea.length) {
+        const wantedAreas = topArea.map(normalize);
         targets = targets.filter(t => !t.area || wantedAreas.includes(normalize(t.area)));
       }
-      // Top toko filter (state.store) juga apply
       if (Array.isArray(state.store) && state.store.length) {
         const wantedStores = state.store.map(normalize);
         targets = targets.filter(t => wantedStores.includes(normalize(t.store || t.toko)));
@@ -3355,8 +3352,9 @@ async function fetchCompareBarFull(bar) {
         : Object.values(targetData || {}).filter(v => v && typeof v === 'object' && (v.store || v.toko));
       const normalize = s => String(s || '').toLowerCase().trim();
       let targets = rawT.filter(t => !TARGET_AREA_ROLLUPS.has(normalize(t.store || t.toko)));
-      if (state.forecastArea && state.forecastArea.length) {
-        const wantedAreas = state.forecastArea.map(normalize);
+      const topArea2 = Array.isArray(state.area) ? expandSelectedAreas(state.area) : [];
+      if (topArea2.length) {
+        const wantedAreas = topArea2.map(normalize);
         targets = targets.filter(t => !t.area || wantedAreas.includes(normalize(t.area)));
       }
       if (Array.isArray(state.store) && state.store.length) {
@@ -3439,25 +3437,12 @@ async function renderCustomCompare() {
       </div>`;
   }).join('');
 
-  // Available areas from referenceOptions
-  const allAreas = (state.referenceOptions && state.referenceOptions.areas) || [];
-  state.forecastArea = state.forecastArea || [];
-  const areaChips = allAreas.map(a => {
-    const active = state.forecastArea.includes(a);
-    return `<button data-area="${escapeHtml(a)}" class="forecast-area-chip" style="padding:4px 10px;border:1px solid ${active?'#002A3A':'var(--border)'};background:${active?'#002A3A':'#fff'};color:${active?'#fff':'#475569'};border-radius:999px;font-size:10.5px;cursor:pointer;font-weight:${active?'700':'500'};">${escapeHtml(a)}</button>`;
-  }).join('');
-
   wrap.innerHTML = `
     <div style="margin-bottom:12px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border-soft);border-radius:4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <strong style="color:#002A3A;">Forecast</strong>
       <span>·</span>
       <span style="font-size:11px;color:#475569;">Channel: <strong>retail</strong> <span class="muted">(locked)</span></span>
-      <span>·</span>
-      <span style="font-size:11px;color:#475569;">Area:</span>
-      <div id="forecastAreaChips" style="display:flex;gap:4px;flex-wrap:wrap;">
-        <button data-area="__all__" class="forecast-area-chip" style="padding:4px 10px;border:1px solid ${state.forecastArea.length?'var(--border)':'#002A3A'};background:${state.forecastArea.length?'#fff':'#002A3A'};color:${state.forecastArea.length?'#475569':'#fff'};border-radius:999px;font-size:10.5px;cursor:pointer;font-weight:${state.forecastArea.length?'500':'700'};">Semua</button>
-        ${areaChips}
-      </div>
+      <span class="muted" style="font-size:11px;">— Filter area/toko/gender/series/tier pakai filter atas</span>
     </div>
     <div class="card">
       <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -3478,20 +3463,6 @@ async function renderCustomCompare() {
     </div>
     <div id="forecastKpiSummary" style="margin-top:14px;"></div>
     <div id="forecastBreakdowns" style="margin-top:14px;"></div>`;
-
-  // Wire area chips
-  wrap.querySelectorAll('.forecast-area-chip').forEach(chip => {
-    chip.onclick = () => {
-      const a = chip.getAttribute('data-area');
-      if (a === '__all__') state.forecastArea = [];
-      else {
-        const i = state.forecastArea.indexOf(a);
-        if (i >= 0) state.forecastArea.splice(i, 1);
-        else state.forecastArea.push(a);
-      }
-      renderCustomCompare();
-    };
-  });
 
   // Wire change handlers — update state.customCompareBars in place
   wrap.querySelectorAll('.compare-bar-row select').forEach(sel => {
@@ -3633,7 +3604,12 @@ function renderForecastKpiSummary(bars, fullResults, barLabels) {
   });
 
   const growthLabel = _histGrowthLabel(bars, barLabels, fullResults);
-  const headerCells = barLabels.map(l => `<th class="right">${escapeHtml(l.split(' · ')[0])}</th>`).join('');
+  // Header: tampilkan bulan-tahun + tag "Target" kalau itu bar target supaya jelas.
+  const headerCells = bars.map((b, i) => {
+    const monYear = barLabels[i].split(' · ')[0];
+    const suffix = b.metric === 'target' ? ' · <span class="muted" style="font-size:9px;">Target</span>' : '';
+    return `<th class="right">${escapeHtml(monYear)}${suffix}</th>`;
+  }).join('');
 
   const rows = [
     { label: 'Revenue', key: 'revenue', fmt: fmtRpShort },
@@ -3690,6 +3666,11 @@ function renderForecastBreakdowns(bars, fullResults, barLabels) {
   const growthLabel = _histGrowthLabel(bars, barLabels, fullResults);
 
   function buildDimTable(title, dimKey) {
+    // Per Gender / Per Series: skip kolom target (data target ga ke-breakdown
+    // per gender/series, dan kolom target=0 ga informatif). Per Toko: keep semua.
+    const skipTarget = dimKey === 'byGender' || dimKey === 'bySeries';
+    const colIdxs = bars.map((_, i) => i).filter(i => !(skipTarget && fullResults[i].isTarget));
+
     // Collect unique names across all bars
     const allNames = new Map(); // normalized -> display name
     fullResults.forEach(f => (f[dimKey] || []).forEach(r => {
@@ -3715,14 +3696,11 @@ function renderForecastBreakdowns(bars, fullResults, barLabels) {
 
     if (!rows.length) return '';
 
-    const headerCells = bars.map((b, i) => {
-      const label = barLabels[i];
-      return `<th class="right">${escapeHtml(label)}</th>`;
-    }).join('');
+    const headerCells = colIdxs.map(i => `<th class="right">${escapeHtml(barLabels[i])}</th>`).join('');
     const bodyRows = rows.slice(0, 30).map((r, i) => {
-      const valCells = r.vals.map((v, j) => {
+      const valCells = colIdxs.map(j => {
         const fmt = COMPARE_METRICS[bars[j].metric].fmt;
-        return `<td class="right">${fmt(v)}</td>`;
+        return `<td class="right">${fmt(r.vals[j])}</td>`;
       }).join('');
       const growthCell = r.growth === null
         ? '<td class="center muted">—</td>'

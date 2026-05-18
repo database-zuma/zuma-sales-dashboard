@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.07';
+const APP_VERSION = 'v2.08';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2966,15 +2966,19 @@ async function renderGrowth() {
       // Fetch cur period juga (tidak reuse state.rawData karena range beda)
       curData = await loadChannel(state.channel, curFrom, curTo, { group: 'growth-cur-mom' });
     } else if (isWow) {
-      // WoW = rolling 7 hari. Selalu 7 vs 7 hari, include data hari ini.
-      // cur: today-6 → today (7 hari terakhir)
-      // prev: today-13 → today-7 (7 hari sebelumnya)
+      // WoW = rolling 7 hari complete, ending KEMARIN (bukan today).
+      // Alasan: data hari ini biasanya belum ada — retail Accurate closingan baru
+      // besok pagi, iSeller pun realtime tapi day belum closed. Cur berakhir today
+      // bikin angka di-under-count vs prev yg full.
+      // cur:  yesterday-6 → yesterday  (7 hari complete)
+      // prev: yesterday-13 → yesterday-7
       const today = new Date();
-      const curStart = new Date(today); curStart.setDate(today.getDate() - 6);
-      const prevEnd  = new Date(today); prevEnd.setDate(today.getDate() - 7);
-      const prevStart = new Date(today); prevStart.setDate(today.getDate() - 13);
+      const yest = new Date(today); yest.setDate(today.getDate() - 1);
+      const curStart = new Date(yest); curStart.setDate(yest.getDate() - 6);
+      const prevEnd  = new Date(yest); prevEnd.setDate(yest.getDate() - 7);
+      const prevStart = new Date(yest); prevStart.setDate(yest.getDate() - 13);
       curFrom  = fmtIso(curStart);
-      curTo    = fmtIso(today);
+      curTo    = fmtIso(yest);
       prevFrom = fmtIso(prevStart);
       prevTo   = fmtIso(prevEnd);
       curData = await loadChannel(state.channel, curFrom, curTo, { group: 'growth-cur-wow' });

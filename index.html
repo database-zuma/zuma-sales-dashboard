@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.09';
+const APP_VERSION = 'v2.10';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1888,6 +1888,89 @@ async function exportPerformanceXlsx(list, label) {
     columnWidths: [{wch:5},{wch:32},{wch:14},{wch:10},{wch:14},{wch:10},{wch:8},{wch:12},{wch:14}],
     numericCols: [0, 3, 4, 5, 7, 8],  // # Qty Revenue Txn ASP ATV
     decimalCols: [6],                  // UPT (col 6) — 2 decimal
+  });
+}
+
+// ============ EXPORT GROWTH (YoY / MoM / WoW) ============
+// Build multi-sheet workbook: KPI Summary + Per Toko/Channel/Customer + Per Gender + Per Series.
+async function exportGrowthXlsx(snap) {
+  const { modeLabel, periodLabel, prevLabel, channel, curKpi, prevKpi,
+          byStore, byGender, bySeries, nameLabel, isRetailLike } = snap;
+
+  const num = (v) => Number(v) || 0;
+  const pct = (cur, prev) => (prev ? ((cur - prev) / prev) * 100 : null);
+  const curRev = num(curKpi.revenue);
+  const prevRev = num(prevKpi.revenue);
+  const curQty = num(curKpi.pairs);
+  const prevQty = num(prevKpi.pairs);
+  const curTrx = num(curKpi.transactions);
+  const prevTrx = num(prevKpi.transactions);
+
+  // Sheet 1: KPI Summary
+  const kpiRows = [
+    ['Revenue', prevRev, curRev, pct(curRev, prevRev)],
+    ['Pairs',   prevQty, curQty, pct(curQty, prevQty)],
+  ];
+  if (isRetailLike) {
+    kpiRows.push(['Transactions', prevTrx, curTrx, pct(curTrx, prevTrx)]);
+    const curAtu = curTrx ? curQty / curTrx : 0;
+    const prevAtu = prevTrx ? prevQty / prevTrx : 0;
+    const curAtv = curTrx ? curRev / curTrx : 0;
+    const prevAtv = prevTrx ? prevRev / prevTrx : 0;
+    const curAsp = curQty ? curRev / curQty : 0;
+    const prevAsp = prevQty ? prevRev / prevQty : 0;
+    kpiRows.push(['ATU (Pairs/Trx)', prevAtu, curAtu, pct(curAtu, prevAtu)]);
+    kpiRows.push(['ATV (Rev/Trx)',   prevAtv, curAtv, pct(curAtv, prevAtv)]);
+    kpiRows.push(['ASP (Rev/Pairs)', prevAsp, curAsp, pct(curAsp, prevAsp)]);
+  }
+  const kpiSheet = {
+    sheetName: 'KPI Summary',
+    headers: ['Metric', `${prevLabel}`, `${periodLabel}`, `Δ ${modeLabel} %`],
+    rows: kpiRows,
+    columnWidths: [{wch:22},{wch:28},{wch:28},{wch:16}],
+    decimalCols: [1, 2],    // numeric value cols, render with 2 decimals (KPI mixed type)
+    percentCols: [3],
+  };
+
+  // Build dim sheet: # | Name | Prev Rev | Cur Rev | Δ Rev % | Prev Qty | Cur Qty | Δ Qty % | Tag
+  const buildDimSheet = (sheetName, dimRows, label) => {
+    const rows = dimRows.map((r, i) => {
+      let tag = '';
+      if (r.prevRev === 0 && r.curRev > 0) tag = 'NEW';
+      else if (r.curRev === 0 && r.prevRev > 0) tag = 'CLOSED';
+      return [
+        i + 1,
+        String(r.name || '-'),
+        num(r.prevRev),
+        num(r.curRev),
+        pct(r.curRev, r.prevRev),
+        num(r.prevQty),
+        num(r.curQty),
+        pct(r.curQty, r.prevQty),
+        tag,
+      ];
+    });
+    return {
+      sheetName,
+      headers: ['#', label,
+        `${prevLabel} Revenue`, `${periodLabel} Revenue`, `Δ ${modeLabel} Rev %`,
+        `${prevLabel} Qty`,     `${periodLabel} Qty`,     `Δ ${modeLabel} Qty %`,
+        'Tag'],
+      rows,
+      columnWidths: [{wch:5},{wch:32},{wch:22},{wch:22},{wch:14},{wch:14},{wch:14},{wch:14},{wch:10}],
+      numericCols: [0, 2, 3, 5, 6],
+      percentCols: [4, 7],
+    };
+  };
+
+  const sheets = [kpiSheet];
+  if (byStore?.length)  sheets.push(buildDimSheet(`Per ${nameLabel}`, byStore, nameLabel));
+  if (byGender?.length) sheets.push(buildDimSheet('Per Gender', byGender, 'Gender'));
+  if (bySeries?.length) sheets.push(buildDimSheet('Per Series', bySeries, 'Series'));
+
+  await exportToXlsx({
+    filename: `growth-${modeLabel.toLowerCase()}-${channel}-${(new Date()).toISOString().slice(0,10)}.xlsx`,
+    sheets,
   });
 }
 
@@ -3134,10 +3217,11 @@ async function renderGrowth() {
         <span>${periodLabel} <strong>vs</strong> ${prevLabel}</span>
         <span>·</span>
         <span>Channel: <strong>${state.channel}</strong></span>
-        <span style="margin-left:auto;display:flex;gap:6px;">
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
           <button id="gmYoy" style="${modeBtnStyle(isYoy)}">YoY</button>
           <button id="gmMom" style="${modeBtnStyle(isMom)}">MoM</button>
           <button id="gmWow" style="${modeBtnStyle(isWow)}">WoW</button>
+          <button id="btnXlsxGrowth" class="btn-ghost" style="margin-left:8px;font-size:12px;padding:6px 12px;">Excel</button>
         </span>
       </div>
       <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:640px;margin-bottom:14px;">
@@ -3200,6 +3284,16 @@ async function renderGrowth() {
     if (yoyBtn) yoyBtn.onclick = () => { state.growthMode = 'yoy'; renderGrowth(); };
     if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
     if (wowBtn) wowBtn.onclick = () => { state.growthMode = 'wow'; renderGrowth(); };
+    // Excel export — capture data snapshot via closure
+    const xlsxBtn = document.getElementById('btnXlsxGrowth');
+    if (xlsxBtn) xlsxBtn.onclick = () => exportGrowthXlsx({
+      modeLabel, periodLabel, prevLabel,
+      channel: state.channel,
+      curKpi, prevKpi,
+      byStore, byGender, bySeries,
+      nameLabel,
+      isRetailLike: state.channel === 'retail' || state.channel === 'event',
+    });
   } catch (e) {
     // Filter change bikin fetch terabort — silent skip, next refresh akan re-render.
     const msg = String(e?.message || e || '');

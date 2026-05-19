@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.12';
+const APP_VERSION = 'v2.13';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3268,15 +3268,12 @@ async function renderGrowth() {
       </div>`;
     };
 
-    // Filter UI buat metric columns — styling sama dengan top filter (filter-bar pattern)
-    const chipStyle = (active) => `padding:5px 10px;border:1px solid ${active?'#002A3A':'var(--border)'};background:${active?'#002A3A':'var(--card)'};color:${active?'#fff':'var(--fg)'};border-radius:var(--radius-sm);font-size:12px;cursor:pointer;font-weight:${active?'600':'500'};line-height:1;`;
+    // Filter UI buat metric columns — pakai msMultiSelect widget yang sama dengan top filter
     const metricChipsHtml = `
       <div class="filter-bar" style="margin-bottom:10px;">
-        <div class="filter-group flex" style="flex:1;">
+        <div class="filter-group flex" style="max-width:280px;">
           <label class="filter-label">Metrik Kolom</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            ${AVAIL_METRICS.map(m => `<button data-metric="${m}" class="growth-metric-chip" style="${chipStyle(activeMetrics.includes(m))}">${METRIC_DEFS[m].label}</button>`).join('')}
-          </div>
+          <div class="msx" id="growthMetricMsx"></div>
         </div>
       </div>`;
 
@@ -3358,20 +3355,25 @@ async function renderGrowth() {
     if (yoyBtn) yoyBtn.onclick = () => { state.growthMode = 'yoy'; renderGrowth(); };
     if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
     if (wowBtn) wowBtn.onclick = () => { state.growthMode = 'wow'; renderGrowth(); };
-    // Wire metric chip toggle — re-render UI only (no re-fetch)
-    wrap.querySelectorAll('.growth-metric-chip').forEach(chip => {
-      chip.onclick = () => {
-        const m = chip.getAttribute('data-metric');
-        const idx = state.growthMetrics.indexOf(m);
-        if (idx >= 0) {
-          if (state.growthMetrics.length <= 1) { alert('Minimal 1 metrik.'); return; }
-          state.growthMetrics.splice(idx, 1);
-        } else {
-          state.growthMetrics.push(m);
+    // Wire metric dropdown — pakai MultiSelect widget yang sama dengan filter atas
+    const metricHost = document.getElementById('growthMetricMsx');
+    if (metricHost) {
+      const metricMsx = new MultiSelect(metricHost, {
+        placeholder: 'Pilih metrik…',
+        searchable: false,
+        onChange: (vals) => {
+          if (!vals.length) {
+            alert('Minimal 1 metrik.');
+            metricMsx.setSelected(state.growthMetrics);
+            return;
+          }
+          state.growthMetrics = vals;
+          renderGrowth();
         }
-        renderGrowth();
-      };
-    });
+      });
+      metricMsx.setOptions(AVAIL_METRICS.map(m => ({ value: m, label: METRIC_DEFS[m].label })));
+      metricMsx.setSelected(activeMetrics);
+    }
     // Excel export — capture data snapshot via closure
     const xlsxBtn = document.getElementById('btnXlsxGrowth');
     if (xlsxBtn) xlsxBtn.onclick = () => exportGrowthXlsx({

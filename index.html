@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.17';
+const APP_VERSION = 'v2.18';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4371,12 +4371,17 @@ async function renderTarget() {
         const MONTH_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
         const pad = (n) => String(n).padStart(2, '0');
         const today = new Date();
-        const todayDOM = today.getDate();
-        // MoM periode — current month-to-date vs prev month same DOM range
+        // Data cutoff = kemarin (today's sales belum complete sampai Accurate
+        // close malam ini). Pakai yesterday biar MoM/WoW apple-to-apple.
+        const yest = new Date(today); yest.setDate(today.getDate() - 1);
+        const fmtIso = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        const _yestIso = fmtIso(yest);
+
+        // MoM periode — current month-to-yesterday vs prev month same DOM range
         const curMomFrom = _effFrom; // tanggal 1 bulan picker
-        // cur MoM end: min(today, end-of-picker-month)
-        const _todayIso = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
-        const curMomTo = _todayIso < _effTo ? _todayIso : _effTo;
+        // cur MoM end: min(yesterday, end-of-picker-month). Yesterday > _effTo terjadi
+        // kalau picker month udah lewat (bulan kemarin/sebelumnya).
+        const curMomTo = _yestIso < _effTo ? _yestIso : _effTo;
         const curMomDOM = parseInt(curMomTo.slice(8,10), 10);
         const prevMonth = new Date(pickY, pickM - 2, 1);
         const prevY = prevMonth.getFullYear();
@@ -4385,17 +4390,18 @@ async function renderTarget() {
         const prevDOM = Math.min(curMomDOM, prevLastDay);
         const prevMomFrom = `${prevY}-${pad(prevM)}-01`;
         const prevMomTo   = `${prevY}-${pad(prevM)}-${pad(prevDOM)}`;
+
         // WoW periode — rolling 7 hari ending kemarin
-        const yest = new Date(today); yest.setDate(today.getDate() - 1);
-        const fmtIso = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
         const curWowStart = new Date(yest); curWowStart.setDate(yest.getDate() - 6);
         const prevWowEnd  = new Date(yest); prevWowEnd.setDate(yest.getDate() - 7);
         const prevWowStart = new Date(yest); prevWowStart.setDate(yest.getDate() - 13);
         const curWowFrom = fmtIso(curWowStart), curWowTo = fmtIso(yest);
         const prevWowFrom = fmtIso(prevWowStart), prevWowTo = fmtIso(prevWowEnd);
 
-        // Fetch periods (cur picker month udah ada di _pickedData)
-        const [prevMomData, curWowData, prevWowData] = await Promise.all([
+        // Fetch periods — sekarang cur MoM juga di-fetch terpisah supaya ending-nya
+        // di kemarin (bukan today/end-of-month).
+        const [curMomData, prevMomData, curWowData, prevWowData] = await Promise.all([
+          loadChannel(state.channel, curMomFrom,  curMomTo,  { group: 'lap-cur-mom'  }).catch(() => ({byEntity:[]})),
           loadChannel(state.channel, prevMomFrom, prevMomTo, { group: 'lap-prev-mom' }).catch(() => ({byEntity:[]})),
           loadChannel(state.channel, curWowFrom,  curWowTo,  { group: 'lap-cur-wow'  }).catch(() => ({byEntity:[]})),
           loadChannel(state.channel, prevWowFrom, prevWowTo, { group: 'lap-prev-wow' }).catch(() => ({byEntity:[]})),
@@ -4415,13 +4421,12 @@ async function renderTarget() {
           });
           return m;
         };
-        const curMomMap  = toMap(byEntity);          // cur picker month
+        // Cur MoM = picker month 1st → kemarin (ditakedown supaya apple-to-apple
+        // vs prev month same DOM, bukan full month vs partial).
+        const curMomMap  = toMap(curMomData.byEntity);
         const prevMomMap = toMap(prevMomData.byEntity);
         const curWowMap  = toMap(curWowData.byEntity);
         const prevWowMap = toMap(prevWowData.byEntity);
-        // Cur MoM range = picker month-to-date — perlu fetch ulang dengan curMomTo (karena _effTo bisa EOM)
-        // Untuk simplicity, pakai byEntity dari _pickedData (full picker month). MoM jadi compare
-        // "bulan ini full" vs "bulan lalu same DOM range" — close enough untuk laporan.
 
         // Build sorted tracked list (use existing tracked, sorted by achv ascending = worst first like Patokan Sales 2)
         const allRows = [...tracked].sort((a, b) => a.pct - b.pct);

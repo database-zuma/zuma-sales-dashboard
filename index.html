@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.10';
+const APP_VERSION = 'v2.11';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1932,35 +1932,54 @@ async function exportGrowthXlsx(snap) {
     percentCols: [3],
   };
 
-  // Build dim sheet: # | Name | Prev Rev | Cur Rev | Δ Rev % | Prev Qty | Cur Qty | Δ Qty % | Tag
+  // Dim sheet — semua metric available (Rev/Qty/Trx/ATU/ATV/ASP kalau channel retail-like).
   const buildDimSheet = (sheetName, dimRows, label) => {
+    const metricCols = isRetailLike
+      ? [
+          { key: 'Rev', prev: 'prevRev', cur: 'curRev', fmt: 'num' },
+          { key: 'Qty', prev: 'prevQty', cur: 'curQty', fmt: 'num' },
+          { key: 'Trx', prev: 'prevTrx', cur: 'curTrx', fmt: 'num' },
+          { key: 'ATU', prev: 'prevAtu', cur: 'curAtu', fmt: 'dec' },
+          { key: 'ATV', prev: 'prevAtv', cur: 'curAtv', fmt: 'num' },
+          { key: 'ASP', prev: 'prevAsp', cur: 'curAsp', fmt: 'num' },
+        ]
+      : [
+          { key: 'Rev', prev: 'prevRev', cur: 'curRev', fmt: 'num' },
+          { key: 'Qty', prev: 'prevQty', cur: 'curQty', fmt: 'num' },
+        ];
+
+    const headers = ['#', label];
+    const numericCols = [0];
+    const percentCols = [];
+    const decimalCols = [];
+    const colWidths = [{wch:5},{wch:32}];
+
+    metricCols.forEach(mc => {
+      headers.push(`${prevLabel} ${mc.key}`, `${periodLabel} ${mc.key}`, `Δ ${modeLabel} ${mc.key} %`);
+      const baseIdx = headers.length - 3;
+      if (mc.fmt === 'dec') {
+        decimalCols.push(baseIdx, baseIdx + 1);
+      } else {
+        numericCols.push(baseIdx, baseIdx + 1);
+      }
+      percentCols.push(baseIdx + 2);
+      colWidths.push({wch:18},{wch:18},{wch:14});
+    });
+    headers.push('Tag');
+    colWidths.push({wch:10});
+
     const rows = dimRows.map((r, i) => {
+      const row = [i + 1, String(r.name || '-')];
+      metricCols.forEach(mc => {
+        row.push(num(r[mc.prev]), num(r[mc.cur]), pct(r[mc.cur], r[mc.prev]));
+      });
       let tag = '';
       if (r.prevRev === 0 && r.curRev > 0) tag = 'NEW';
       else if (r.curRev === 0 && r.prevRev > 0) tag = 'CLOSED';
-      return [
-        i + 1,
-        String(r.name || '-'),
-        num(r.prevRev),
-        num(r.curRev),
-        pct(r.curRev, r.prevRev),
-        num(r.prevQty),
-        num(r.curQty),
-        pct(r.curQty, r.prevQty),
-        tag,
-      ];
+      row.push(tag);
+      return row;
     });
-    return {
-      sheetName,
-      headers: ['#', label,
-        `${prevLabel} Revenue`, `${periodLabel} Revenue`, `Δ ${modeLabel} Rev %`,
-        `${prevLabel} Qty`,     `${periodLabel} Qty`,     `Δ ${modeLabel} Qty %`,
-        'Tag'],
-      rows,
-      columnWidths: [{wch:5},{wch:32},{wch:22},{wch:22},{wch:14},{wch:14},{wch:14},{wch:14},{wch:10}],
-      numericCols: [0, 2, 3, 5, 6],
-      percentCols: [4, 7],
-    };
+    return { sheetName, headers, rows, columnWidths: colWidths, numericCols, decimalCols, percentCols };
   };
 
   const sheets = [kpiSheet];
@@ -3118,28 +3137,43 @@ async function renderGrowth() {
     const curQty = Number(curKpi.pairs) || 0;
     const prevQty = Number(prevKpi.pairs) || 0;
 
-    // Aggregate per dimension — key by lowercase name, value = {curRev, curQty, prevRev, prevQty}.
+    // Aggregate per dimension — track Rev/Qty/Trx, derive ATU/ATV/ASP per row.
     const buildDim = (curArr, prevArr) => {
       const m = new Map();
       const put = (arr, which) => {
         (arr || []).forEach(r => {
           const key = String(r.name || '-').toLowerCase().trim();
           if (!key) return;
-          const cur = m.get(key) || { name: r.name || '-', curRev: 0, curQty: 0, prevRev: 0, prevQty: 0 };
+          const cur = m.get(key) || { name: r.name || '-',
+            curRev: 0, curQty: 0, curTrx: 0,
+            prevRev: 0, prevQty: 0, prevTrx: 0 };
           cur[which + 'Rev'] += Number(r.revenue) || 0;
           cur[which + 'Qty'] += Number(r.pairs) || 0;
-          // Simpan nama versi paling baru (prefer display cur)
+          cur[which + 'Trx'] += Number(r.transactions) || 0;
           if (which === 'cur' && r.name) cur.name = r.name;
           m.set(key, cur);
         });
       };
       put(curArr, 'cur');
       put(prevArr, 'prev');
-      return Array.from(m.values()).map(r => ({
-        ...r,
-        dRev: delta(r.curRev, r.prevRev),
-        dQty: delta(r.curQty, r.prevQty),
-      })).sort((a, b) => (b.curRev || 0) - (a.curRev || 0));
+      return Array.from(m.values()).map(r => {
+        const curAtu  = r.curTrx  ? r.curQty / r.curTrx   : 0;
+        const prevAtu = r.prevTrx ? r.prevQty / r.prevTrx : 0;
+        const curAtv  = r.curTrx  ? r.curRev / r.curTrx   : 0;
+        const prevAtv = r.prevTrx ? r.prevRev / r.prevTrx : 0;
+        const curAsp  = r.curQty  ? r.curRev / r.curQty   : 0;
+        const prevAsp = r.prevQty ? r.prevRev / r.prevQty : 0;
+        return {
+          ...r,
+          curAtu, prevAtu, curAtv, prevAtv, curAsp, prevAsp,
+          dRev: delta(r.curRev, r.prevRev),
+          dQty: delta(r.curQty, r.prevQty),
+          dTrx: delta(r.curTrx, r.prevTrx),
+          dAtu: delta(curAtu, prevAtu),
+          dAtv: delta(curAtv, prevAtv),
+          dAsp: delta(curAsp, prevAsp),
+        };
+      }).sort((a, b) => (b.curRev || 0) - (a.curRev || 0));
     };
 
     // Exclude wholesale entities — regex "wholesale" di nama + revenue-share check.
@@ -3169,8 +3203,38 @@ async function renderGrowth() {
       return '';
     };
 
+    // Metric definitions — label, prev/cur keys, formatter, delta key.
+    const METRIC_DEFS = {
+      revenue: { label: 'Revenue', prevKey: 'prevRev', curKey: 'curRev', dKey: 'dRev', fmt: fmtRpShort },
+      pairs:   { label: 'Qty',     prevKey: 'prevQty', curKey: 'curQty', dKey: 'dQty', fmt: fmtNum },
+      trx:     { label: 'Trx',     prevKey: 'prevTrx', curKey: 'curTrx', dKey: 'dTrx', fmt: fmtNum },
+      atu:     { label: 'ATU',     prevKey: 'prevAtu', curKey: 'curAtu', dKey: 'dAtu', fmt: (v) => (v == null ? '—' : v.toFixed(2)) },
+      atv:     { label: 'ATV',     prevKey: 'prevAtv', curKey: 'curAtv', dKey: 'dAtv', fmt: fmtRpShort },
+      asp:     { label: 'ASP',     prevKey: 'prevAsp', curKey: 'curAsp', dKey: 'dAsp', fmt: fmtRpShort },
+    };
+    // Available metrics depend on channel. Trx/ATU/ATV/ASP butuh transactions
+    // yang cuma reliable di retail/event.
+    const isTrxLike = state.channel === 'retail' || state.channel === 'event';
+    const AVAIL_METRICS = isTrxLike
+      ? ['revenue', 'pairs', 'trx', 'atu', 'atv', 'asp']
+      : ['revenue', 'pairs'];
+    // Default tampil: Revenue + Pairs (preserve behavior lama)
+    if (!Array.isArray(state.growthMetrics) || !state.growthMetrics.length) {
+      state.growthMetrics = ['revenue', 'pairs'];
+    }
+    // Filter ke metric yang available untuk channel ini
+    const activeMetrics = state.growthMetrics.filter(m => AVAIL_METRICS.includes(m));
+    if (!activeMetrics.length) activeMetrics.push('revenue');
+
     const tableHtml = (title, rows, nameLabel, drillable = false) => {
       if (!rows.length) return '';
+      const metricHeaderCells = activeMetrics.map(m => {
+        const def = METRIC_DEFS[m];
+        return `
+          <th class="right">${prevLabel}<br><span class="muted" style="font-weight:400;">${def.label}</span></th>
+          <th class="right">${periodLabel}<br><span class="muted" style="font-weight:400;">${def.label}</span></th>
+          <th class="center">Δ ${def.label}</th>`;
+      }).join('');
       return `<div class="card">
         <div class="card-header"><div class="card-title">${title}</div></div>
         <div class="table-wrap" style="max-height:440px;overflow:auto;">
@@ -3178,26 +3242,23 @@ async function renderGrowth() {
             <thead><tr>
               <th class="center" style="width:36px;">#</th>
               <th>${nameLabel}</th>
-              <th class="right">${prevLabel}<br><span class="muted" style="font-weight:400;">Revenue</span></th>
-              <th class="right">${periodLabel}<br><span class="muted" style="font-weight:400;">Revenue</span></th>
-              <th class="center">Δ Value</th>
-              <th class="right">${prevLabel}<br><span class="muted" style="font-weight:400;">Qty</span></th>
-              <th class="right">${periodLabel}<br><span class="muted" style="font-weight:400;">Qty</span></th>
-              <th class="center">Δ Qty</th>
+              ${metricHeaderCells}
               <th class="center">Tag</th>
             </tr></thead>
             <tbody>
               ${rows.map((r, i) => {
                 const drill = drillable ? `style="cursor:pointer;" data-drill-store="${escapeHtml(r.name||'')}" title="Klik buat liat top SKU di tab Produk"` : '';
+                const metricCells = activeMetrics.map(m => {
+                  const def = METRIC_DEFS[m];
+                  return `
+                    <td class="right muted">${def.fmt(r[def.prevKey])}</td>
+                    <td class="right strong">${def.fmt(r[def.curKey])}</td>
+                    <td class="center">${pctHtml(r[def.dKey])}</td>`;
+                }).join('');
                 return `<tr ${drill}>
                 <td class="center muted">${i+1}</td>
                 <td class="strong">${escapeHtml(titleCaseEntity(r.name))}</td>
-                <td class="right muted">${fmtRpShort(r.prevRev)}</td>
-                <td class="right strong">${fmtRpShort(r.curRev)}</td>
-                <td class="center">${pctHtml(r.dRev)}</td>
-                <td class="right muted">${fmtNum(r.prevQty)}</td>
-                <td class="right strong">${fmtNum(r.curQty)}</td>
-                <td class="center">${pctHtml(r.dQty)}</td>
+                ${metricCells}
                 <td class="center">${rowTag(r)}</td>
               </tr>`;
               }).join('')}
@@ -3206,6 +3267,14 @@ async function renderGrowth() {
         </div>
       </div>`;
     };
+
+    // Chips UI buat toggle metric columns
+    const chipStyle = (active) => `padding:4px 10px;border:1px solid ${active?'#002A3A':'var(--border)'};background:${active?'#002A3A':'#fff'};color:${active?'#fff':'#475569'};border-radius:999px;font-size:10.5px;cursor:pointer;font-weight:${active?'700':'500'};`;
+    const metricChipsHtml = `
+      <div style="margin-bottom:10px;padding:8px 12px;background:#fff;border:1px solid var(--border-soft);border-radius:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:10.5px;color:#94a3b8;font-weight:600;">METRIK KOLOM:</span>
+        ${AVAIL_METRICS.map(m => `<button data-metric="${m}" class="growth-metric-chip" style="${chipStyle(activeMetrics.includes(m))}">${METRIC_DEFS[m].label}</button>`).join('')}
+      </div>`;
 
     const nameLabel = state.channel === 'online' ? 'Channel' : state.channel === 'consig' ? 'Toko' : state.channel === 'wholesale' ? 'Customer' : 'Toko';
 
@@ -3269,6 +3338,7 @@ async function renderGrowth() {
           </div>
         </div>`;
       })() : ''}
+      ${metricChipsHtml}
       ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
       ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
       ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
@@ -3284,6 +3354,20 @@ async function renderGrowth() {
     if (yoyBtn) yoyBtn.onclick = () => { state.growthMode = 'yoy'; renderGrowth(); };
     if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
     if (wowBtn) wowBtn.onclick = () => { state.growthMode = 'wow'; renderGrowth(); };
+    // Wire metric chip toggle — re-render UI only (no re-fetch)
+    wrap.querySelectorAll('.growth-metric-chip').forEach(chip => {
+      chip.onclick = () => {
+        const m = chip.getAttribute('data-metric');
+        const idx = state.growthMetrics.indexOf(m);
+        if (idx >= 0) {
+          if (state.growthMetrics.length <= 1) { alert('Minimal 1 metrik.'); return; }
+          state.growthMetrics.splice(idx, 1);
+        } else {
+          state.growthMetrics.push(m);
+        }
+        renderGrowth();
+      };
+    });
     // Excel export — capture data snapshot via closure
     const xlsxBtn = document.getElementById('btnXlsxGrowth');
     if (xlsxBtn) xlsxBtn.onclick = () => exportGrowthXlsx({

@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.19';
+const APP_VERSION = 'v2.20';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4444,7 +4444,7 @@ async function renderTarget() {
           String(r.area || '-'),
           String(r.storeName || ''),
           Number(r.actualRev) || 0,
-          (Number(r.pct) || 0) / 100,   // 0.39 (Excel %)
+          Number(r.pct) || 0,   // raw percent (39, 41, 43) — format 0.0"%" cuma append "%" suffix
         ]);
         const sheetGrafik = {
           sheetName: 'Grafik',

@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.18';
+const APP_VERSION = 'v2.19';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4447,7 +4447,7 @@ async function renderTarget() {
           (Number(r.pct) || 0) / 100,   // 0.39 (Excel %)
         ]);
         const sheetGrafik = {
-          sheetName: 'GRAFIK',
+          sheetName: 'Grafik',
           headers: ['Area', 'Toko', 'Revenue', 'Achievment %'],
           rows: grafikRows,
           columnWidths: [{wch:12},{wch:34},{wch:18},{wch:14}],
@@ -4477,7 +4477,7 @@ async function renderTarget() {
             ];
           });
         const sheetPs1 = {
-          sheetName: 'Patokan Sales 1',
+          sheetName: 'Ranking Toko',
           headers: ['#', 'Name', 'Area', 'Channel', 'Pairs', 'Revenue', 'Txn', 'ATU', 'ASP', 'ATV'],
           rows: ps1Rows,
           columnWidths: [{wch:5},{wch:32},{wch:12},{wch:10},{wch:10},{wch:16},{wch:10},{wch:8},{wch:14},{wch:14}],
@@ -4518,7 +4518,7 @@ async function renderTarget() {
           ];
         });
         const sheetPs2 = {
-          sheetName: 'Patokan Sales 2',
+          sheetName: 'Pencapaian Target',
           headers: ['#', 'Toko', 'Area', 'Target', 'Revenue', 'Qty', 'Achv %',
                     'Pace Gap (pp)', 'Δ Rp', 'Forecast', 'Proj %', 'Status'],
           rows: ps2Rows,
@@ -4555,7 +4555,7 @@ async function renderTarget() {
           ];
         }).sort((a, b) => Number(b[3]) - Number(a[3]));   // sort by cur rev desc
         const sheetMom = {
-          sheetName: 'MoM Patokan',
+          sheetName: 'MoM',
           headers: ['#', 'Toko',
                     `${momLblPrev} Revenue`, `${momLblCur} Revenue`, 'Δ MoM Rev %',
                     `${momLblPrev} Qty`, `${momLblCur} Qty`, 'Δ MoM Qty %', 'Tag'],
@@ -4587,7 +4587,7 @@ async function renderTarget() {
           ];
         }).sort((a, b) => Number(b[3]) - Number(a[3]));
         const sheetWow = {
-          sheetName: 'WoW Patokan',
+          sheetName: 'WoW',
           headers: ['#', 'Toko',
                     `${wowLblPrev} Revenue`, `${wowLblCur} Revenue`, 'Δ WoW Rev %',
                     `${wowLblPrev} Qty`, `${wowLblCur} Qty`, 'Δ WoW Qty %', 'Tag'],
@@ -4624,7 +4624,7 @@ async function renderTarget() {
           ];
         });
         const sheetMaster = {
-          sheetName: `${MONTH_ID[pickM-1]} Sales ${pickY}`.slice(0, 31),
+          sheetName: 'Detail per Toko',
           headers: ['No', 'Toko', 'Area', 'Target', 'Revenue',
                     'AVG Sales harian', 'Selisih Target', 'AVG Target harian', '+- Daily sales/Target',
                     'Qty/Pairs', 'Txn', 'ATU', 'ASP'],

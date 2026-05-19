@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.13';
+const APP_VERSION = 'v2.14';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -3222,13 +3222,18 @@ async function renderGrowth() {
     if (!Array.isArray(state.growthMetrics) || !state.growthMetrics.length) {
       state.growthMetrics = ['revenue', 'pairs'];
     }
-    // Filter ke metric yang available untuk channel ini
-    const activeMetrics = state.growthMetrics.filter(m => AVAIL_METRICS.includes(m));
-    if (!activeMetrics.length) activeMetrics.push('revenue');
+    // Recompute active metrics tiap call — supaya in-place table re-render
+    // bisa baca state.growthMetrics terbaru (bukan snapshot lama).
+    const getActiveMetrics = () => {
+      const v = (state.growthMetrics || []).filter(m => AVAIL_METRICS.includes(m));
+      return v.length ? v : ['revenue'];
+    };
+    const activeMetrics = getActiveMetrics();
 
     const tableHtml = (title, rows, nameLabel, drillable = false) => {
       if (!rows.length) return '';
-      const metricHeaderCells = activeMetrics.map(m => {
+      const am = getActiveMetrics();
+      const metricHeaderCells = am.map(m => {
         const def = METRIC_DEFS[m];
         return `
           <th class="right">${prevLabel}<br><span class="muted" style="font-weight:400;">${def.label}</span></th>
@@ -3248,7 +3253,7 @@ async function renderGrowth() {
             <tbody>
               ${rows.map((r, i) => {
                 const drill = drillable ? `style="cursor:pointer;" data-drill-store="${escapeHtml(r.name||'')}" title="Klik buat liat top SKU di tab Produk"` : '';
-                const metricCells = activeMetrics.map(m => {
+                const metricCells = am.map(m => {
                   const def = METRIC_DEFS[m];
                   return `
                     <td class="right muted">${def.fmt(r[def.prevKey])}</td>
@@ -3340,9 +3345,11 @@ async function renderGrowth() {
         </div>`;
       })() : ''}
       ${metricChipsHtml}
-      ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
-      ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
-      ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
+      <div id="growthTables">
+        ${tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)}
+        ${byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : ''}
+        ${bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : ''}
+      </div>
     `;
     // Wire drill-down clicks pada baris toko (byStore table)
     wrap.querySelectorAll('tr[data-drill-store]').forEach(tr => {
@@ -3355,7 +3362,8 @@ async function renderGrowth() {
     if (yoyBtn) yoyBtn.onclick = () => { state.growthMode = 'yoy'; renderGrowth(); };
     if (momBtn) momBtn.onclick = () => { state.growthMode = 'mom'; renderGrowth(); };
     if (wowBtn) wowBtn.onclick = () => { state.growthMode = 'wow'; renderGrowth(); };
-    // Wire metric dropdown — pakai MultiSelect widget yang sama dengan filter atas
+    // Wire metric dropdown — re-render tables only, biarin popup tetap kebuka
+    // supaya user bisa klik beberapa metric sekaligus tanpa popup ke-destroy.
     const metricHost = document.getElementById('growthMetricMsx');
     if (metricHost) {
       const metricMsx = new MultiSelect(metricHost, {
@@ -3363,12 +3371,24 @@ async function renderGrowth() {
         searchable: false,
         onChange: (vals) => {
           if (!vals.length) {
-            alert('Minimal 1 metrik.');
+            // Min 1 — silently snap back tanpa alert (alert juga bisa close popup)
             metricMsx.setSelected(state.growthMetrics);
             return;
           }
           state.growthMetrics = vals;
-          renderGrowth();
+          // Re-render HANYA div tables, jangan rebuild seluruh wrap (popup dropdown
+          // sebagai child wrap akan ke-destroy kalau pakai renderGrowth()).
+          const tablesDiv = document.getElementById('growthTables');
+          if (tablesDiv) {
+            tablesDiv.innerHTML =
+              tableHtml(`Per ${nameLabel}`, byStore, nameLabel, true)
+              + (byGender.length ? tableHtml('Per Gender', byGender, 'Gender') : '')
+              + (bySeries.length ? tableHtml('Per Series', bySeries, 'Series') : '');
+            // Re-wire drill click handlers
+            tablesDiv.querySelectorAll('tr[data-drill-store]').forEach(tr => {
+              tr.onclick = () => drillToProduk(tr.getAttribute('data-drill-store'));
+            });
+          }
         }
       });
       metricMsx.setOptions(AVAIL_METRICS.map(m => ({ value: m, label: METRIC_DEFS[m].label })));

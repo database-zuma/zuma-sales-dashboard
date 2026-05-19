@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.16';
+const APP_VERSION = 'v2.17';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4368,6 +4368,7 @@ async function renderTarget() {
       const origText = laporanBtn.textContent;
       laporanBtn.textContent = 'Loading…';
       try {
+        const MONTH_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
         const pad = (n) => String(n).padStart(2, '0');
         const today = new Date();
         const todayDOM = today.getDate();

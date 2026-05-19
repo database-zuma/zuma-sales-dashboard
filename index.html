@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.20';
+const APP_VERSION = 'v2.21';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1562,7 +1562,7 @@ async function exportToXlsx(opts) {
       right:  { style: 'thin', color: { rgb: '003C53' } }
     }
   };
-  function buildSheet({ sheetName, headers, rows, columnWidths, numericCols, percentCols, decimalCols }) {
+  function buildSheet({ sheetName, headers, rows, columnWidths, numericCols, percentCols, decimalCols, cellStyleOverride }) {
     const aoa = [headers].concat(rows);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     for (let c = 0; c < headers.length; c++) {
@@ -1586,6 +1586,18 @@ async function exportToXlsx(opts) {
         if (decimalSet.has(c))      { cell.t = 'n'; cell.z = '#,##0.00'; }
         else if (numericSet.has(c)) { cell.t = 'n'; cell.z = '#,##0'; }
         else if (percentSet.has(c)) { cell.t = 'n'; cell.z = '0.0"%"'; }
+        // Hook utk override cell style per (row,col,value) — buat color coding.
+        if (typeof cellStyleOverride === 'function') {
+          const o = cellStyleOverride(r - 1, c, cell.v, rows[r - 1]);
+          if (o) {
+            if (o.fillRgb) cellStyle.fill = { patternType: 'solid', fgColor: { rgb: o.fillRgb } };
+            if (o.fontRgb || o.bold != null) {
+              cellStyle.font = Object.assign({}, cellStyle.font || {},
+                o.fontRgb ? { color: { rgb: o.fontRgb } } : {},
+                o.bold != null ? { bold: o.bold } : {});
+            }
+          }
+        }
         cell.s = cellStyle;
       }
     }
@@ -4437,25 +4449,7 @@ async function renderTarget() {
         const pickerElapsed = Math.max(1, Math.round((pickerCutoff - pickerFromD) / 86400000) + 1);
         const pickerTotalDays = new Date(pickY, pickM, 0).getDate(); // hari di bulan picker
 
-        // ===== Sheet 1: GRAFIK (Area, Toko, Revenue, Achv%) =====
-        const grafikRows = [...allRows].sort((a, b) =>
-          (a.area || 'zzz').localeCompare(b.area || 'zzz') || (a.pct - b.pct)
-        ).map(r => [
-          String(r.area || '-'),
-          String(r.storeName || ''),
-          Number(r.actualRev) || 0,
-          Number(r.pct) || 0,   // raw percent (39, 41, 43) — format 0.0"%" cuma append "%" suffix
-        ]);
-        const sheetGrafik = {
-          sheetName: 'Grafik',
-          headers: ['Area', 'Toko', 'Revenue', 'Achievment %'],
-          rows: grafikRows,
-          columnWidths: [{wch:12},{wch:34},{wch:18},{wch:14}],
-          numericCols: [2],
-          percentCols: [3],
-        };
-
-        // ===== Sheet 2: Patokan Sales 1 (ranking by Revenue desc) =====
+        // ===== Sheet 1: Ranking Toko (ranking by Revenue desc) =====
         const ps1Rows = [...allRows]
           .sort((a, b) => b.actualRev - a.actualRev)
           .map((r, i) => {
@@ -4485,9 +4479,40 @@ async function renderTarget() {
           decimalCols: [7],
         };
 
-        // ===== Sheet 3: Patokan Sales 2 (achievement vs target — sorted ascending = worst first) =====
-        const ps2Rows = allRows.map((r, i) => {
+        // ===== Sheet 2: Pencapaian Target (mega-sheet) =====
+        // Kolom: No · Toko · Area · Target · Revenue · AVG Sales harian · Selisih Target ·
+        //        AVG Target harian · +/- Daily · Qty · Txn · ATU · ASP · ATV ·
+        //        Achv % · Growth · Pace Gap · Δ Rp · Forecast · Proj % · Status ·
+        //        Sales prev-WoW · Sales cur-WoW · WoW Δ% ·
+        //        Sales prev-MoM · Sales cur-MoM · MoM Δ%
+        // Color coding row: Achv % + Growth + Status (traffic light)
+        const fmtRange = (from, to) => {
+          const d1 = new Date(from), d2 = new Date(to);
+          const f = (d) => d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+          return `${f(d1)}-${f(d2)}`;
+        };
+        const wowPrevLbl = `Sales ${fmtRange(prevWowFrom, prevWowTo)}`;
+        const wowCurLbl  = `Sales ${fmtRange(curWowFrom, curWowTo)}`;
+        const momPrevLbl = `Sales ${fmtRange(prevMomFrom, prevMomTo)}`;
+        const momCurLbl  = `Sales ${fmtRange(curMomFrom, curMomTo)}`;
+
+        const ptRows = allRows.map((r, i) => {
+          const k = normalize(r.storeName);
+          const cm = curMomMap.get(k) || { rev: 0, qty: 0, trx: 0 };
+          const pm = prevMomMap.get(k) || { rev: 0, qty: 0, trx: 0 };
+          const cw = curWowMap.get(k) || { rev: 0, qty: 0, trx: 0 };
+          const pw = prevWowMap.get(k) || { rev: 0, qty: 0, trx: 0 };
+
           const pct = r.target ? (r.actualRev / r.target * 100) : 0;
+          const avgDailySales = pickerElapsed ? r.actualRev / pickerElapsed : 0;
+          const selisihTarget = r.target ? (r.target - r.actualRev) : 0;
+          const avgTargetDaily = pickerTotalDays ? (r.target || 0) / pickerTotalDays : 0;
+          const dailyDiff = avgDailySales - avgTargetDaily;
+          const trx = (curMomMap.get(k) || {}).trx || 0;
+          const upt = trx ? r.actualQty / trx : 0;
+          const asp = r.actualQty ? r.actualRev / r.actualQty : 0;
+          const atv = trx ? r.actualRev / trx : 0;
+
           const paceGap = _showPace && r.target ? (pct - _timePct) : null;
           const expectedRev = r.target ? r.target * (_elapsedDays / _totalDays) : 0;
           const deltaRp = r.target ? r.actualRev - expectedRev : null;
@@ -4502,31 +4527,91 @@ async function renderTarget() {
             }
           }
           const status = pct >= 100 ? 'Sudah Achieve' : 'Belum Achieve';
+          // Growth = MoM rev change (cur vs prev month same DOM range)
+          const growth = pm.rev ? ((cm.rev - pm.rev) / pm.rev * 100) : null;
+          // WoW comparison
+          const wowComp = pw.rev ? ((cw.rev - pw.rev) / pw.rev * 100) : null;
+          // MoM comparison (same as growth, dipisah kolom buat clarity di header tanggal)
+          const momComp = growth;
+
           return [
             i + 1,
             String(r.storeName || ''),
             String(r.area || '-'),
             Number(r.target) || 0,
             Number(r.actualRev) || 0,
+            Number(avgDailySales) || 0,
+            Number(selisihTarget) || 0,
+            Number(avgTargetDaily) || 0,
+            Number(dailyDiff) || 0,
             Number(r.actualQty) || 0,
+            Number(trx) || 0,
+            Number(upt) || 0,
+            Number(asp) || 0,
+            Number(atv) || 0,
             Number(pct) || 0,
+            growth === null ? '' : Number(growth),
             paceGap === null ? '' : Number(paceGap),
             deltaRp === null ? '' : Number(deltaRp),
             forecast === null ? '' : Number(forecast),
             projPct === null ? '' : Number(projPct),
             status,
+            Number(pw.rev) || 0,
+            Number(cw.rev) || 0,
+            wowComp === null ? '' : Number(wowComp),
+            Number(pm.rev) || 0,
+            Number(cm.rev) || 0,
+            momComp === null ? '' : Number(momComp),
           ];
         });
+
+        // Color rules — traffic light style
+        // Achv % (col 14): green ≥100, yellow 80-99, red <80
+        // Growth/Comparison (col 15, 23, 26): green ≥0, red <0
+        // Status (col 20): green='Sudah Achieve', red='Belum Achieve'
+        const ptCellStyle = (rowIdx, colIdx, value, rowData) => {
+          if (colIdx === 14) {
+            const v = Number(value) || 0;
+            if (v >= 100) return { fillRgb: 'D1FAE5', fontRgb: '065F46', bold: true };
+            if (v >= 80)  return { fillRgb: 'FEF3C7', fontRgb: '92400E', bold: true };
+            if (v > 0)    return { fillRgb: 'FEE2E2', fontRgb: '991B1B', bold: true };
+          }
+          // Growth + WoW Comparison + MoM Comparison
+          if (colIdx === 15 || colIdx === 23 || colIdx === 26) {
+            if (value === '' || value == null) return null;
+            const v = Number(value) || 0;
+            if (v > 0)  return { fillRgb: 'D1FAE5', fontRgb: '065F46', bold: true };
+            if (v < 0)  return { fillRgb: 'FEE2E2', fontRgb: '991B1B', bold: true };
+          }
+          if (colIdx === 20) {  // Status
+            if (value === 'Sudah Achieve') return { fillRgb: 'D1FAE5', fontRgb: '065F46', bold: true };
+            if (value === 'Belum Achieve') return { fillRgb: 'FEE2E2', fontRgb: '991B1B', bold: true };
+          }
+          return null;
+        };
+
         const sheetPs2 = {
           sheetName: 'Pencapaian Target',
-          headers: ['#', 'Toko', 'Area', 'Target', 'Revenue', 'Qty', 'Achv %',
-                    'Pace Gap (pp)', 'Δ Rp', 'Forecast', 'Proj %', 'Status'],
-          rows: ps2Rows,
-          columnWidths: [{wch:5},{wch:32},{wch:12},{wch:14},{wch:14},{wch:10},{wch:10},
-                         {wch:14},{wch:14},{wch:14},{wch:10},{wch:16}],
-          numericCols: [0, 3, 4, 5, 8, 9],
-          decimalCols: [7],
-          percentCols: [6, 10],
+          headers: ['No', 'Toko', 'Area', 'Target', 'Revenue',
+                    'AVG Sales harian', 'Selisih Target', 'AVG Target harian',
+                    '+/- Daily vs Target', 'Qty/Pairs', 'Txn/Cv',
+                    'ATU', 'ASP', 'ATV',
+                    'Achv %', 'Growth',
+                    'Pace Gap (pp)', 'Δ Rp', 'Forecast', 'Proj %', 'Status',
+                    wowPrevLbl, wowCurLbl, 'Δ WoW %',
+                    momPrevLbl, momCurLbl, 'Δ MoM %'],
+          rows: ptRows,
+          columnWidths: [{wch:5},{wch:32},{wch:12},{wch:14},{wch:14},
+                         {wch:14},{wch:14},{wch:14},{wch:16},{wch:10},{wch:10},
+                         {wch:8},{wch:12},{wch:12},
+                         {wch:10},{wch:10},
+                         {wch:12},{wch:14},{wch:14},{wch:10},{wch:16},
+                         {wch:16},{wch:16},{wch:12},
+                         {wch:16},{wch:16},{wch:12}],
+          numericCols: [0, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 17, 18, 21, 22, 24, 25],
+          decimalCols: [11, 16],   // ATU, Pace Gap
+          percentCols: [14, 15, 19, 23, 26],
+          cellStyleOverride: ptCellStyle,
         };
 
         // ===== Sheet 4: MoM Patokan =====
@@ -4597,46 +4682,9 @@ async function renderTarget() {
           percentCols: [4, 7],
         };
 
-        // ===== Sheet 6: Master Detail (per-toko granular like Bali Sales sheet) =====
-        const masterRows = allRows.map((r, i) => {
-          const cur = curMomMap.get(normalize(r.storeName)) || { trx: 0 };
-          const avgDailySales = pickerElapsed ? r.actualRev / pickerElapsed : 0;
-          const selisihTarget = r.target ? (r.target - r.actualRev) : 0;
-          const avgTargetDaily = pickerTotalDays ? (r.target || 0) / pickerTotalDays : 0;
-          const dailyDiff = avgDailySales - avgTargetDaily;
-          const trx = cur.trx || 0;
-          const upt = trx ? r.actualQty / trx : 0;
-          const asp = r.actualQty ? r.actualRev / r.actualQty : 0;
-          return [
-            i + 1,
-            String(r.storeName || ''),
-            String(r.area || '-'),
-            Number(r.target) || 0,
-            Number(r.actualRev) || 0,
-            Number(avgDailySales) || 0,
-            Number(selisihTarget) || 0,
-            Number(avgTargetDaily) || 0,
-            Number(dailyDiff) || 0,
-            Number(r.actualQty) || 0,
-            Number(trx) || 0,
-            Number(upt) || 0,
-            Number(asp) || 0,
-          ];
-        });
-        const sheetMaster = {
-          sheetName: 'Detail per Toko',
-          headers: ['No', 'Toko', 'Area', 'Target', 'Revenue',
-                    'AVG Sales harian', 'Selisih Target', 'AVG Target harian', '+- Daily sales/Target',
-                    'Qty/Pairs', 'Txn', 'ATU', 'ASP'],
-          rows: masterRows,
-          columnWidths: [{wch:5},{wch:32},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18},{wch:10},{wch:10},{wch:8},{wch:14}],
-          numericCols: [0, 3, 4, 5, 6, 7, 8, 9, 10, 12],
-          decimalCols: [11],
-        };
-
         await exportToXlsx({
           filename: `Laporan-Lengkap-${state.channel}-${MONTH_ID[pickM-1]}-${pickY}.xlsx`,
-          sheets: [sheetGrafik, sheetPs1, sheetPs2, sheetMom, sheetWow, sheetMaster],
+          sheets: [sheetPs1, sheetPs2, sheetMom, sheetWow],
         });
       } catch (err) {
         console.error('laporan lengkap', err);

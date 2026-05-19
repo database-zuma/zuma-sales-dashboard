@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.14';
+const APP_VERSION = 'v2.15';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1501,6 +1501,16 @@ function applyStoreAreaCascade() {
 // currently-filtered payload — so picking Gender = WOMEN shrinks the Series
 // list to series that have women's products. Mirrors store-area cascade idea.
 // Falls back to the full reference list when no gender is selected.
+//
+// CRITICAL: bySeries payload pakai compound name "GENDER · SERIES" (e.g. "MEN · CLASSIC")
+// untuk display, tapi API filter cuma terima bare canonical name ("CLASSIC").
+// Extract canonical via split-on-" · " + take last segment, dedupe.
+function _canonicalSeriesName(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const parts = s.split(' · ');
+  return parts[parts.length - 1].toUpperCase();
+}
 function populateFilters(data) {
   if (!window._msx || !window._msx.series) return;
   const refSeries = (state.referenceOptions && state.referenceOptions.series) || [];
@@ -1510,13 +1520,14 @@ function populateFilters(data) {
     return;
   }
   // bySeries from payload contains only series matching active filters (incl. gender).
+  // Extract canonical (drop "GENDER · " prefix) supaya value match API filter.
   const filteredSeries = (data && data.bySeries || [])
-    .map(s => String(s.name || s.series || '').trim())
+    .map(s => _canonicalSeriesName(s.name || s.series || ''))
     .filter(Boolean);
   // Preserve currently-selected series even if not in filtered set (so user can still see + un-pick them).
   const merged = Array.from(new Set([...filteredSeries, ...(state.series || [])]));
   window._msx.series.setOptions(merged.length ? merged : refSeries);
-  // Prune selections that are no longer valid options
+  // Prune selections that are no longer valid options (also strips legacy compound names)
   if (Array.isArray(state.series) && state.series.length) {
     const visible = new Set(merged);
     const pruned = state.series.filter(s => visible.has(s));

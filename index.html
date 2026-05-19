@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.15';
+const APP_VERSION = 'v2.16';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -4267,7 +4267,8 @@ async function renderTarget() {
         <select id="targetPickMonth" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">${monthSelectHTML}</select>
         <select id="targetPickYear"  style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;">${yearSelectHTML}</select>
         <span class="muted" style="font-size:10.5px;">independen dari filter periode di atas. Default: bulan ini.</span>
-        <button class="btn-ghost" id="btnTargetCurrentXlsx" style="margin-left:auto;" title="Export Excel: Sudah Achieve + Belum Achieve">Excel</button>
+        <button class="btn-ghost" id="btnTargetCurrentXlsx" style="margin-left:auto;" title="Export Excel single-sheet: Sudah Achieve + Belum Achieve">Excel</button>
+        <button class="btn-ghost" id="btnTargetLaporanXlsx" style="background:#002A3A;color:#fff;border-color:#002A3A;" title="Export Laporan Lengkap: GRAFIK + Patokan Sales 1/2 + MoM + WoW + Master Detail (6 sheet)">Laporan Lengkap</button>
         <span style="font-size:10.5px;color:#64748b;">Channel: <strong>${state.channel}</strong></span>
       </div>`;
 
@@ -4358,6 +4359,286 @@ async function renderTarget() {
         decimalCols: [7],                          // Pace Gap (decimal)
         percentCols: [6, 10],                      // Achv %, Proj %
       });
+    };
+
+    // === LAPORAN LENGKAP — 6 sheet mirip pattern Bali Sales Data ===
+    const laporanBtn = document.getElementById('btnTargetLaporanXlsx');
+    if (laporanBtn) laporanBtn.onclick = async () => {
+      laporanBtn.disabled = true;
+      const origText = laporanBtn.textContent;
+      laporanBtn.textContent = 'Loading…';
+      try {
+        const pad = (n) => String(n).padStart(2, '0');
+        const today = new Date();
+        const todayDOM = today.getDate();
+        // MoM periode — current month-to-date vs prev month same DOM range
+        const curMomFrom = _effFrom; // tanggal 1 bulan picker
+        // cur MoM end: min(today, end-of-picker-month)
+        const _todayIso = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+        const curMomTo = _todayIso < _effTo ? _todayIso : _effTo;
+        const curMomDOM = parseInt(curMomTo.slice(8,10), 10);
+        const prevMonth = new Date(pickY, pickM - 2, 1);
+        const prevY = prevMonth.getFullYear();
+        const prevM = prevMonth.getMonth() + 1;
+        const prevLastDay = new Date(prevY, prevM, 0).getDate();
+        const prevDOM = Math.min(curMomDOM, prevLastDay);
+        const prevMomFrom = `${prevY}-${pad(prevM)}-01`;
+        const prevMomTo   = `${prevY}-${pad(prevM)}-${pad(prevDOM)}`;
+        // WoW periode — rolling 7 hari ending kemarin
+        const yest = new Date(today); yest.setDate(today.getDate() - 1);
+        const fmtIso = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        const curWowStart = new Date(yest); curWowStart.setDate(yest.getDate() - 6);
+        const prevWowEnd  = new Date(yest); prevWowEnd.setDate(yest.getDate() - 7);
+        const prevWowStart = new Date(yest); prevWowStart.setDate(yest.getDate() - 13);
+        const curWowFrom = fmtIso(curWowStart), curWowTo = fmtIso(yest);
+        const prevWowFrom = fmtIso(prevWowStart), prevWowTo = fmtIso(prevWowEnd);
+
+        // Fetch periods (cur picker month udah ada di _pickedData)
+        const [prevMomData, curWowData, prevWowData] = await Promise.all([
+          loadChannel(state.channel, prevMomFrom, prevMomTo, { group: 'lap-prev-mom' }).catch(() => ({byEntity:[]})),
+          loadChannel(state.channel, curWowFrom,  curWowTo,  { group: 'lap-cur-wow'  }).catch(() => ({byEntity:[]})),
+          loadChannel(state.channel, prevWowFrom, prevWowTo, { group: 'lap-prev-wow' }).catch(() => ({byEntity:[]})),
+        ]);
+
+        // Helper — map byEntity → {name: {rev, qty, trx}}
+        const toMap = (arr) => {
+          const m = new Map();
+          (arr || []).forEach(e => {
+            const k = normalize(e.name);
+            if (!k) return;
+            const cur = m.get(k) || { name: e.name, area: e.area || '-', rev: 0, qty: 0, trx: 0 };
+            cur.rev += Number(e.revenue) || 0;
+            cur.qty += Number(e.pairs) || 0;
+            cur.trx += Number(e.transactions) || 0;
+            m.set(k, cur);
+          });
+          return m;
+        };
+        const curMomMap  = toMap(byEntity);          // cur picker month
+        const prevMomMap = toMap(prevMomData.byEntity);
+        const curWowMap  = toMap(curWowData.byEntity);
+        const prevWowMap = toMap(prevWowData.byEntity);
+        // Cur MoM range = picker month-to-date — perlu fetch ulang dengan curMomTo (karena _effTo bisa EOM)
+        // Untuk simplicity, pakai byEntity dari _pickedData (full picker month). MoM jadi compare
+        // "bulan ini full" vs "bulan lalu same DOM range" — close enough untuk laporan.
+
+        // Build sorted tracked list (use existing tracked, sorted by achv ascending = worst first like Patokan Sales 2)
+        const allRows = [...tracked].sort((a, b) => a.pct - b.pct);
+
+        // Days elapsed di picker month (untuk Master Detail avg harian)
+        const pickerFromD = new Date(_effFrom);
+        const pickerCutoff = _today < new Date(_effTo) ? _today : new Date(_effTo);
+        const pickerElapsed = Math.max(1, Math.round((pickerCutoff - pickerFromD) / 86400000) + 1);
+        const pickerTotalDays = new Date(pickY, pickM, 0).getDate(); // hari di bulan picker
+
+        // ===== Sheet 1: GRAFIK (Area, Toko, Revenue, Achv%) =====
+        const grafikRows = [...allRows].sort((a, b) =>
+          (a.area || 'zzz').localeCompare(b.area || 'zzz') || (a.pct - b.pct)
+        ).map(r => [
+          String(r.area || '-'),
+          String(r.storeName || ''),
+          Number(r.actualRev) || 0,
+          (Number(r.pct) || 0) / 100,   // 0.39 (Excel %)
+        ]);
+        const sheetGrafik = {
+          sheetName: 'GRAFIK',
+          headers: ['Area', 'Toko', 'Revenue', 'Achievment %'],
+          rows: grafikRows,
+          columnWidths: [{wch:12},{wch:34},{wch:18},{wch:14}],
+          numericCols: [2],
+          percentCols: [3],
+        };
+
+        // ===== Sheet 2: Patokan Sales 1 (ranking by Revenue desc) =====
+        const ps1Rows = [...allRows]
+          .sort((a, b) => b.actualRev - a.actualRev)
+          .map((r, i) => {
+            const trx = (curMomMap.get(normalize(r.storeName)) || {}).trx || 0;
+            const upt = trx ? r.actualQty / trx : 0;
+            const asp = r.actualQty ? r.actualRev / r.actualQty : 0;
+            const atv = trx ? r.actualRev / trx : 0;
+            return [
+              i + 1,
+              String(r.storeName || ''),
+              String(r.area || '-'),
+              chLabel.toUpperCase(),
+              Number(r.actualQty) || 0,
+              Number(r.actualRev) || 0,
+              Number(trx) || 0,
+              Number(upt) || 0,
+              Number(asp) || 0,
+              Number(atv) || 0,
+            ];
+          });
+        const sheetPs1 = {
+          sheetName: 'Patokan Sales 1',
+          headers: ['#', 'Name', 'Area', 'Channel', 'Pairs', 'Revenue', 'Txn', 'ATU', 'ASP', 'ATV'],
+          rows: ps1Rows,
+          columnWidths: [{wch:5},{wch:32},{wch:12},{wch:10},{wch:10},{wch:16},{wch:10},{wch:8},{wch:14},{wch:14}],
+          numericCols: [0, 4, 5, 6, 8, 9],
+          decimalCols: [7],
+        };
+
+        // ===== Sheet 3: Patokan Sales 2 (achievement vs target — sorted ascending = worst first) =====
+        const ps2Rows = allRows.map((r, i) => {
+          const pct = r.target ? (r.actualRev / r.target * 100) : 0;
+          const paceGap = _showPace && r.target ? (pct - _timePct) : null;
+          const expectedRev = r.target ? r.target * (_elapsedDays / _totalDays) : 0;
+          const deltaRp = r.target ? r.actualRev - expectedRev : null;
+          let forecast = null, projPct = null;
+          if (r.target) {
+            if (_showForecast) {
+              forecast = (r.actualRev / _elapsedDays) * _totalDays;
+              projPct = forecast / r.target * 100;
+            } else {
+              forecast = r.actualRev;
+              projPct = pct;
+            }
+          }
+          const status = pct >= 100 ? 'Sudah Achieve' : 'Belum Achieve';
+          return [
+            i + 1,
+            String(r.storeName || ''),
+            String(r.area || '-'),
+            Number(r.target) || 0,
+            Number(r.actualRev) || 0,
+            Number(r.actualQty) || 0,
+            Number(pct) || 0,
+            paceGap === null ? '' : Number(paceGap),
+            deltaRp === null ? '' : Number(deltaRp),
+            forecast === null ? '' : Number(forecast),
+            projPct === null ? '' : Number(projPct),
+            status,
+          ];
+        });
+        const sheetPs2 = {
+          sheetName: 'Patokan Sales 2',
+          headers: ['#', 'Toko', 'Area', 'Target', 'Revenue', 'Qty', 'Achv %',
+                    'Pace Gap (pp)', 'Δ Rp', 'Forecast', 'Proj %', 'Status'],
+          rows: ps2Rows,
+          columnWidths: [{wch:5},{wch:32},{wch:12},{wch:14},{wch:14},{wch:10},{wch:10},
+                         {wch:14},{wch:14},{wch:14},{wch:10},{wch:16}],
+          numericCols: [0, 3, 4, 5, 8, 9],
+          decimalCols: [7],
+          percentCols: [6, 10],
+        };
+
+        // ===== Sheet 4: MoM Patokan =====
+        const fmtDay = (iso) => {
+          const dt = new Date(iso);
+          return isNaN(dt) ? iso : dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+        };
+        const momLblPrev = `${fmtDay(prevMomFrom)} – ${fmtDay(prevMomTo)}`;
+        const momLblCur  = `${fmtDay(curMomFrom)} – ${fmtDay(curMomTo)}`;
+        const momRows = allRows.map((r, i) => {
+          const k = normalize(r.storeName);
+          const cur  = curMomMap.get(k) || { rev: 0, qty: 0 };
+          const prev = prevMomMap.get(k) || { rev: 0, qty: 0 };
+          const dRev = prev.rev ? ((cur.rev - prev.rev) / prev.rev * 100) : null;
+          const dQty = prev.qty ? ((cur.qty - prev.qty) / prev.qty * 100) : null;
+          let tag = '';
+          if (prev.rev === 0 && cur.rev > 0) tag = 'NEW';
+          else if (cur.rev === 0 && prev.rev > 0) tag = 'CLOSED';
+          return [
+            i + 1, String(r.storeName || ''),
+            Number(prev.rev) || 0, Number(cur.rev) || 0,
+            dRev === null ? '' : Number(dRev),
+            Number(prev.qty) || 0, Number(cur.qty) || 0,
+            dQty === null ? '' : Number(dQty),
+            tag,
+          ];
+        }).sort((a, b) => Number(b[3]) - Number(a[3]));   // sort by cur rev desc
+        const sheetMom = {
+          sheetName: 'MoM Patokan',
+          headers: ['#', 'Toko',
+                    `${momLblPrev} Revenue`, `${momLblCur} Revenue`, 'Δ MoM Rev %',
+                    `${momLblPrev} Qty`, `${momLblCur} Qty`, 'Δ MoM Qty %', 'Tag'],
+          rows: momRows.map((r, i) => { r[0] = i + 1; return r; }),
+          columnWidths: [{wch:5},{wch:32},{wch:18},{wch:18},{wch:12},{wch:14},{wch:14},{wch:12},{wch:10}],
+          numericCols: [0, 2, 3, 5, 6],
+          percentCols: [4, 7],
+        };
+
+        // ===== Sheet 5: WoW Patokan =====
+        const wowLblPrev = `${fmtDay(prevWowFrom)} – ${fmtDay(prevWowTo)}`;
+        const wowLblCur  = `${fmtDay(curWowFrom)} – ${fmtDay(curWowTo)}`;
+        const wowRows = allRows.map((r, i) => {
+          const k = normalize(r.storeName);
+          const cur  = curWowMap.get(k) || { rev: 0, qty: 0 };
+          const prev = prevWowMap.get(k) || { rev: 0, qty: 0 };
+          const dRev = prev.rev ? ((cur.rev - prev.rev) / prev.rev * 100) : null;
+          const dQty = prev.qty ? ((cur.qty - prev.qty) / prev.qty * 100) : null;
+          let tag = '';
+          if (prev.rev === 0 && cur.rev > 0) tag = 'NEW';
+          else if (cur.rev === 0 && prev.rev > 0) tag = 'CLOSED';
+          return [
+            i + 1, String(r.storeName || ''),
+            Number(prev.rev) || 0, Number(cur.rev) || 0,
+            dRev === null ? '' : Number(dRev),
+            Number(prev.qty) || 0, Number(cur.qty) || 0,
+            dQty === null ? '' : Number(dQty),
+            tag,
+          ];
+        }).sort((a, b) => Number(b[3]) - Number(a[3]));
+        const sheetWow = {
+          sheetName: 'WoW Patokan',
+          headers: ['#', 'Toko',
+                    `${wowLblPrev} Revenue`, `${wowLblCur} Revenue`, 'Δ WoW Rev %',
+                    `${wowLblPrev} Qty`, `${wowLblCur} Qty`, 'Δ WoW Qty %', 'Tag'],
+          rows: wowRows.map((r, i) => { r[0] = i + 1; return r; }),
+          columnWidths: [{wch:5},{wch:32},{wch:18},{wch:18},{wch:12},{wch:14},{wch:14},{wch:12},{wch:10}],
+          numericCols: [0, 2, 3, 5, 6],
+          percentCols: [4, 7],
+        };
+
+        // ===== Sheet 6: Master Detail (per-toko granular like Bali Sales sheet) =====
+        const masterRows = allRows.map((r, i) => {
+          const cur = curMomMap.get(normalize(r.storeName)) || { trx: 0 };
+          const avgDailySales = pickerElapsed ? r.actualRev / pickerElapsed : 0;
+          const selisihTarget = r.target ? (r.target - r.actualRev) : 0;
+          const avgTargetDaily = pickerTotalDays ? (r.target || 0) / pickerTotalDays : 0;
+          const dailyDiff = avgDailySales - avgTargetDaily;
+          const trx = cur.trx || 0;
+          const upt = trx ? r.actualQty / trx : 0;
+          const asp = r.actualQty ? r.actualRev / r.actualQty : 0;
+          return [
+            i + 1,
+            String(r.storeName || ''),
+            String(r.area || '-'),
+            Number(r.target) || 0,
+            Number(r.actualRev) || 0,
+            Number(avgDailySales) || 0,
+            Number(selisihTarget) || 0,
+            Number(avgTargetDaily) || 0,
+            Number(dailyDiff) || 0,
+            Number(r.actualQty) || 0,
+            Number(trx) || 0,
+            Number(upt) || 0,
+            Number(asp) || 0,
+          ];
+        });
+        const sheetMaster = {
+          sheetName: `${MONTH_ID[pickM-1]} Sales ${pickY}`.slice(0, 31),
+          headers: ['No', 'Toko', 'Area', 'Target', 'Revenue',
+                    'AVG Sales harian', 'Selisih Target', 'AVG Target harian', '+- Daily sales/Target',
+                    'Qty/Pairs', 'Txn', 'ATU', 'ASP'],
+          rows: masterRows,
+          columnWidths: [{wch:5},{wch:32},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18},{wch:10},{wch:10},{wch:8},{wch:14}],
+          numericCols: [0, 3, 4, 5, 6, 7, 8, 9, 10, 12],
+          decimalCols: [11],
+        };
+
+        await exportToXlsx({
+          filename: `Laporan-Lengkap-${state.channel}-${MONTH_ID[pickM-1]}-${pickY}.xlsx`,
+          sheets: [sheetGrafik, sheetPs1, sheetPs2, sheetMom, sheetWow, sheetMaster],
+        });
+      } catch (err) {
+        console.error('laporan lengkap', err);
+        alert('Gagal generate laporan: ' + (err.message || err));
+      } finally {
+        laporanBtn.disabled = false;
+        laporanBtn.textContent = origText;
+      }
     };
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/targets: ${escapeHtml(e.message)}</div>`;

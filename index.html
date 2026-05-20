@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.27';
+const APP_VERSION = 'v2.28';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2544,24 +2544,39 @@ async function loadKontribusiPerArea() {
     wrap.innerHTML = '<div class="muted" style="font-size:11px;">Belum ada data area.</div>';
     return;
   }
-  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Fetch ' + areas.length + ' area paralel…</div>';
+  // Counter live so user lihat progress (bukan keliatan hang)
+  let done = 0;
+  const renderLoading = () => {
+    wrap.innerHTML = `<div class="loading"><div class="spinner"></div>Load ${done}/${areas.length} area…</div>`;
+  };
+  renderLoading();
 
   try {
-    // Fetch per area dengan filter area di-isolate (tapi tetap honor channel/gender/series filter atas).
-    // Simpan original state.area, override sementara, lalu restore.
-    const savedArea = state.area;
+    // Build QS langsung per area, ga mutate state.area (avoid race dengan refresh lain).
+    const sandalOnly = !state.skuOnly;
+    const baseFilters = (qs, area) => {
+      qs.set('channel', state.channel);
+      qs.set('from', state.from);
+      qs.set('to', state.to);
+      qs.set('sku_only', String(sandalOnly));
+      // expand "Bali" rollup kalau ada di ref
+      qs.append('area', area);
+      // Honor filter atas (gender/series/tier/store) — kalau ada
+      ['store','gender','series','tier','sku'].forEach(k => {
+        const v = state[k];
+        if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
+        else if (v) qs.append(k, v);
+      });
+      if (state.search) qs.set('search', state.search);
+    };
     const fetchPromises = areas.map(area => {
-      const tempArea = [area];
-      // loadChannel pakai state.area, jadi set sementara
-      state.area = tempArea;
-      const qs = `area-${area}`;
-      const result = loadChannel(state.channel, state.from, state.to, { group: 'kontrib-' + area })
-        .then(d => ({ area, data: d }))
-        .catch(() => ({ area, data: null }));
-      return result;
+      const qs = new URLSearchParams();
+      baseFilters(qs, area);
+      return fetchAPI('/api/sales/dashboard?' + qs.toString(), { group: 'kontrib-' + area })
+        .then(d => { done++; renderLoading(); return { area, data: d }; })
+        .catch(() => { done++; renderLoading(); return { area, data: null }; });
     });
     const results = await Promise.all(fetchPromises);
-    state.area = savedArea;  // restore
 
     // Build matrix
     const buildMatrix = (dimKey) => {

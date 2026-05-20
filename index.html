@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.32';
+const APP_VERSION = 'v2.33';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2601,8 +2601,7 @@ async function loadKontribusiPerArea() {
     const fmtPctCell = (rev, total) => {
       if (!total) return '<td class="right muted">—</td>';
       const pct = (rev / total * 100);
-      const color = pct >= 30 ? '#16a34a' : pct >= 15 ? '#f59e0b' : '#64748b';
-      return `<td class="right" style="color:${color};font-weight:${pct >= 15 ? '700' : '500'};font-variant-numeric:tabular-nums;" title="Rp ${fmtRpShort(rev)} dari Rp ${fmtRpShort(total)}">${pct.toFixed(1)}%</td>`;
+      return `<td class="right" style="font-variant-numeric:tabular-nums;" title="Rp ${fmtRpShort(rev)} dari Rp ${fmtRpShort(total)}">${pct.toFixed(1)}%</td>`;
     };
 
     const buildTableHtml = (title, m) => {

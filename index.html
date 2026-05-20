@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.31';
+const APP_VERSION = 'v2.32';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2552,30 +2552,19 @@ async function loadKontribusiPerArea() {
   renderLoading();
 
   try {
-    // Build QS langsung per area, ga mutate state.area (avoid race dengan refresh lain).
-    const sandalOnly = !state.skuOnly;
-    const baseFilters = (qs, area) => {
-      qs.set('channel', state.channel);
-      qs.set('from', state.from);
-      qs.set('to', state.to);
-      qs.set('sku_only', String(sandalOnly));
-      // expand "Bali" rollup kalau ada di ref
-      qs.append('area', area);
-      // Honor filter atas (gender/series/tier/store) — kalau ada
-      ['store','gender','series','tier','sku'].forEach(k => {
-        const v = state[k];
-        if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
-        else if (v) qs.append(k, v);
-      });
-      if (state.search) qs.set('search', state.search);
-    };
-    const fetchPromises = areas.map(area => {
-      const qs = new URLSearchParams();
-      baseFilters(qs, area);
-      return fetchAPI('/api/sales/dashboard?' + qs.toString(), { group: 'kontrib-' + area })
+    // Pakai loadChannel (lsGet cache) + mutate state.area per iteration.
+    // QS built sync di loadChannel → captures iter's state.area sebelum await.
+    // Skip "group" param supaya prefetch ga ke-abort sama call dari renderProduk.
+    const savedArea = state.area;
+    const fetchPromises = [];
+    for (const area of areas) {
+      state.area = [area];
+      const p = loadChannel(state.channel, state.from, state.to, {})  // no group → no abort
         .then(d => { done++; renderLoading(); return { area, data: d }; })
         .catch(() => { done++; renderLoading(); return { area, data: null }; });
-    });
+      fetchPromises.push(p);
+    }
+    state.area = savedArea;
     const results = await Promise.all(fetchPromises);
 
     // Build matrix

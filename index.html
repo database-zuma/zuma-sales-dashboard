@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.42';
+const APP_VERSION = 'v2.43';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2617,13 +2617,15 @@ async function _doKontribusi() {
 
     // Build matrix
     const buildMatrix = (dimKey) => {
-      // Collect all categories across areas (canonical)
+      // Collect all categories across areas (canonical). Skip KIDS — usually
+      // duplicate/sub of BOYS+GIRLS legacy; user minta di-hide.
+      const HIDDEN_CATS = new Set(['KIDS']);
       const allCats = new Set();
       results.forEach(({ data }) => {
         if (!data) return;
         (data[dimKey] || []).forEach(r => {
           const n = String(r.name || '').trim();
-          if (n) allCats.add(n);
+          if (n && !HIDDEN_CATS.has(n.toUpperCase())) allCats.add(n);
         });
       });
       const cats = Array.from(allCats).sort((a, b) => a.localeCompare(b));

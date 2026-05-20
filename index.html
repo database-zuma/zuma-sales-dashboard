@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.41';
+const APP_VERSION = 'v2.42';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2657,7 +2657,7 @@ async function _doKontribusi() {
       if (!m.cats.length) return '';
       const headRow = ['<th style="background:#002A3A;color:#fff;">Kategori</th>',
         ...areas.map(a => `<th class="right" style="background:#002A3A;color:#fff;">${escapeHtml(a)}</th>`),
-        '<th class="right" style="background:#002A3A;color:#fff;">Total Rp</th>'].join('');
+        '<th class="right" style="background:#002A3A;color:#fff;">Total %</th>'].join('');
       const bodyRows = m.cats.map((cat, ci) => {
         const catTotal = m.matrix[ci].reduce((s, v) => s + v, 0);
         // % per ROW: rev cell / total kategori → kontribusi area dalam kategori ybs.
@@ -2665,15 +2665,14 @@ async function _doKontribusi() {
         return `<tr>
           <td class="strong">${escapeHtml(cat)}</td>
           ${cells}
-          <td class="right strong" style="font-variant-numeric:tabular-nums;">${fmtRpShort(catTotal)}</td>
+          <td class="right strong muted" style="font-variant-numeric:tabular-nums;">${catTotal > 0 ? '100.0%' : '—'}</td>
         </tr>`;
       }).join('');
-      // Total row di bawah: jumlah revenue per area + grand total
-      const grandTotal = m.areaTotals.reduce((s, v) => s + v, 0);
+      // Total row di bawah: jumlah revenue per area
       const totalRow = `<tr style="background:#f1f5f9;font-weight:700;">
         <td>TOTAL Rp</td>
         ${m.areaTotals.map(t => `<td class="right" style="font-variant-numeric:tabular-nums;">${fmtRpShort(t)}</td>`).join('')}
-        <td class="right" style="font-variant-numeric:tabular-nums;">${fmtRpShort(grandTotal)}</td>
+        <td class="right muted">—</td>
       </tr>`;
       return `<div class="card" style="margin-bottom:10px;">
         <div class="card-header"><div class="card-title">${title}</div>

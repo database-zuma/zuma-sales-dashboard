@@ -897,6 +897,15 @@ table.data tfoot td {
         <div class="card-body"><div class="chart-box" id="chartBoxProdukSize" style="height:320px;"><canvas id="chartProdukSize"></canvas></div></div>
       </div>
     </div>
+    <!-- Row 5: Kontribusi per Area (matrix) — gender × area, tipe × area -->
+    <div id="produkKontribusiWrap" style="margin-top:14px;">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Kontribusi per Area</div>
+          <span class="muted" style="font-size:10px;">% share Revenue di tiap area · klik <button id="btnKontribusiLoad" style="margin-left:8px;padding:3px 10px;border:1px solid #002A3A;background:#002A3A;color:#fff;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;">Load</button> buat fetch (9 area parallel)</span>
+        </div>
+        <div class="card-body" id="produkKontribusiContent"><div class="muted" style="font-size:11px;">Klik tombol Load di header.</div></div>
+      </div>
+    </div>
   </section>
 
   <!-- ========= TAB: TREND ========= -->
@@ -1103,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.25';
+const APP_VERSION = 'v2.26';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2519,6 +2528,124 @@ function renderProduk(data) {
   // Sort Distribusi Size by pairs DESC (paling banyak di atas)
   const sortedSize = (data.bySize || []).slice().sort((a,b) => (b.pairs||0) - (a.pairs||0));
   renderChart('chartProdukSize', sortedSize, sizeOpts, 'bar', 30, '#00E273');
+
+  // Kontribusi per Area — wire load button (lazy fetch, opt-in karena 9 API calls).
+  // Reset content tiap renderProduk (state.channel / filter atas mungkin berubah).
+  const kontribContent = document.getElementById('produkKontribusiContent');
+  if (kontribContent) kontribContent.innerHTML = '<div class="muted" style="font-size:11px;">Klik tombol Load di header.</div>';
+  const kontribBtn = document.getElementById('btnKontribusiLoad');
+  if (kontribBtn) kontribBtn.onclick = () => loadKontribusiPerArea();
+}
+
+// Kontribusi per Area: matrix gender × area & tipe × area dengan % share.
+// Lazy load karena fetch 9 area paralel — opt-in via tombol.
+async function loadKontribusiPerArea() {
+  const wrap = document.getElementById('produkKontribusiContent');
+  const btn = document.getElementById('btnKontribusiLoad');
+  if (!wrap) return;
+  const areas = (state.referenceOptions && state.referenceOptions.areas) || [];
+  if (!areas.length) {
+    wrap.innerHTML = '<div class="alert-error">Daftar area kosong. Pilih channel + periode dulu.</div>';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Fetch ' + areas.length + ' area paralel…</div>';
+
+  try {
+    // Fetch per area dengan filter area di-isolate (tapi tetap honor channel/gender/series filter atas).
+    // Simpan original state.area, override sementara, lalu restore.
+    const savedArea = state.area;
+    const fetchPromises = areas.map(area => {
+      const tempArea = [area];
+      // loadChannel pakai state.area, jadi set sementara
+      state.area = tempArea;
+      const qs = `area-${area}`;
+      const result = loadChannel(state.channel, state.from, state.to, { group: 'kontrib-' + area })
+        .then(d => ({ area, data: d }))
+        .catch(() => ({ area, data: null }));
+      return result;
+    });
+    const results = await Promise.all(fetchPromises);
+    state.area = savedArea;  // restore
+
+    // Build matrix
+    const buildMatrix = (dimKey) => {
+      // Collect all categories across areas (canonical)
+      const allCats = new Set();
+      results.forEach(({ data }) => {
+        if (!data) return;
+        (data[dimKey] || []).forEach(r => {
+          const n = String(r.name || '').trim();
+          if (n) allCats.add(n);
+        });
+      });
+      const cats = Array.from(allCats).sort((a, b) => a.localeCompare(b));
+      // Build per-area totals & per-area per-cat revenue
+      const matrix = []; // matrix[catIdx][areaIdx] = revenue
+      const areaTotals = areas.map(() => 0);
+      cats.forEach((c, ci) => {
+        matrix.push(areas.map((area, ai) => {
+          const r = results[ai];
+          if (!r || !r.data) return 0;
+          const found = (r.data[dimKey] || []).find(x => String(x.name || '').trim() === c);
+          const rev = found ? Number(found.revenue) || 0 : 0;
+          areaTotals[ai] += rev;
+          return rev;
+        }));
+      });
+      return { cats, matrix, areaTotals };
+    };
+
+    const genderM = buildMatrix('byGender');
+    const tipeM   = buildMatrix('byTipe');
+
+    const fmtPctCell = (rev, total) => {
+      if (!total) return '<td class="right muted">—</td>';
+      const pct = (rev / total * 100);
+      const color = pct >= 30 ? '#16a34a' : pct >= 15 ? '#f59e0b' : '#64748b';
+      return `<td class="right" style="color:${color};font-weight:${pct >= 15 ? '700' : '500'};font-variant-numeric:tabular-nums;" title="Rp ${fmtRpShort(rev)} dari Rp ${fmtRpShort(total)}">${pct.toFixed(1)}%</td>`;
+    };
+
+    const buildTableHtml = (title, m) => {
+      if (!m.cats.length) return '';
+      const headRow = ['<th style="background:#002A3A;color:#fff;">Kategori</th>',
+        ...areas.map(a => `<th class="right" style="background:#002A3A;color:#fff;">${escapeHtml(a)}</th>`),
+        '<th class="right" style="background:#002A3A;color:#fff;">Total Rp</th>'].join('');
+      const bodyRows = m.cats.map((cat, ci) => {
+        const cells = m.matrix[ci].map((rev, ai) => fmtPctCell(rev, m.areaTotals[ai])).join('');
+        const catTotal = m.matrix[ci].reduce((s, v) => s + v, 0);
+        return `<tr>
+          <td class="strong">${escapeHtml(cat)}</td>
+          ${cells}
+          <td class="right strong" style="font-variant-numeric:tabular-nums;">${fmtRpShort(catTotal)}</td>
+        </tr>`;
+      }).join('');
+      const totalRow = `<tr style="background:#f1f5f9;font-weight:700;">
+        <td>TOTAL</td>
+        ${areas.map(() => '<td class="right muted">100%</td>').join('')}
+        <td class="right">${fmtRpShort(m.areaTotals.reduce((s, v) => s + v, 0))}</td>
+      </tr>`;
+      return `<div class="card" style="margin-bottom:10px;">
+        <div class="card-header"><div class="card-title">${title}</div>
+          <span class="muted" style="font-size:10px;">% = revenue kategori ÷ total revenue area</span>
+        </div>
+        <div class="table-wrap" style="overflow-x:auto;">
+          <table class="data" style="font-size:11px;">
+            <thead><tr>${headRow}</tr></thead>
+            <tbody>${bodyRows}${totalRow}</tbody>
+          </table>
+        </div>
+      </div>`;
+    };
+
+    wrap.innerHTML = buildTableHtml('Per Gender × Area', genderM) +
+                     buildTableHtml('Per Tipe × Area', tipeM);
+  } catch (e) {
+    console.error('kontribusi', e);
+    wrap.innerHTML = `<div class="alert-error">Gagal load: ${escapeHtml(e.message || String(e))}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Load'; }
+  }
 }
 
 // ============ RENDER TREND ============

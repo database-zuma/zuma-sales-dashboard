@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.22';
+const APP_VERSION = 'v2.23';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2456,12 +2456,21 @@ function renderProduk(data) {
       }
     };
 
+    // Stable hash on name → consistent color across filters.
+    // Sebelumnya pakai index posisi → kategori shift posisi pas filter ganti =
+    // warna pindah (e.g. FASHION = hijau di Jatim, hitam di Bali).
+    const colorForName = (name) => {
+      const s = String(name || '').toUpperCase().trim();
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+      return palette[Math.abs(h) % palette.length];
+    };
     produkCharts[id] = new Chart(ctx, {
       type,
       data: {
         labels: slice.map(x => x.name),
         datasets: [{ data: slice.map(x => x.pairs),
-          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map((_, i) => palette[i%palette.length]),
+          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map(x => colorForName(x.name)),
           borderColor: '#fff', borderWidth: type === 'doughnut' ? 2 : 0, borderRadius: 3 }]
       },
       options: finalOpts,

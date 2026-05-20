@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.24';
+const APP_VERSION = 'v2.25';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2424,7 +2424,7 @@ function renderProduk(data) {
       tooltip: { backgroundColor: '#002A3A' } }
   };
 
-  const renderChart = (id, dataArr, opts, type='bar', limit=10, singleColor=null) => {
+  const renderChart = (id, dataArr, opts, type='bar', limit=10, singleColor=null, refList=null) => {
     const slice = (dataArr || []).slice(0, limit);
     const totPairs = slice.reduce((s,x) => s + (Number(x.pairs)||0), 0) || 1;
     const totRev   = slice.reduce((s,x) => s + (Number(x.revenue)||0), 0) || 1;
@@ -2456,21 +2456,31 @@ function renderProduk(data) {
       }
     };
 
-    // Color stable across filters: assign berdasarkan POSISI ALPHABETICAL nama,
-    // bukan posisi di array slice (yg sorted by revenue, bisa shift per filter).
-    // Display order tetap by revenue (slice array stays as-is).
-    // Contoh: Fashion < Jepit alfabetis → Fashion selalu palette[0]=hijau,
-    // Jepit palette[1]=hitam, di filter apa pun.
-    const sortedNames = [...slice.map(x => x.name)].sort((a, b) =>
-      String(a).toLowerCase().localeCompare(String(b).toLowerCase()));
+    // Color stable across filters: pakai REFERENCE LIST lengkap sebagai canonical
+    // alphabetical order. Top-10 slice bisa beda set per area, jadi sort di-slice
+    // doang masih shift. Pakai full ref → mapping fix global.
+    // canonicalize: strip prefix "GENDER · " untuk bySeries ("MEN · CLASSIC" → "CLASSIC")
+    // supaya match dengan referenceOptions.series yang isinya bare name.
+    const canonicalize = (name) => {
+      const s = String(name || '').toUpperCase().trim();
+      const parts = s.split(' · ');
+      return parts[parts.length - 1];
+    };
+    const sourceList = (refList && refList.length ? refList : slice.map(x => x.name));
+    const seenC = new Set();
+    const canonicalNames = sourceList.map(canonicalize).filter(n => {
+      if (!n || seenC.has(n)) return false;
+      seenC.add(n);
+      return true;
+    }).sort((a, b) => a.localeCompare(b));
     const nameToColor = new Map();
-    sortedNames.forEach((n, i) => nameToColor.set(n, palette[i % palette.length]));
+    canonicalNames.forEach((n, i) => nameToColor.set(n, palette[i % palette.length]));
     produkCharts[id] = new Chart(ctx, {
       type,
       data: {
         labels: slice.map(x => x.name),
         datasets: [{ data: slice.map(x => x.pairs),
-          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map(x => nameToColor.get(x.name) || palette[0]),
+          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map(x => nameToColor.get(canonicalize(x.name)) || palette[0]),
           borderColor: '#fff', borderWidth: type === 'doughnut' ? 2 : 0, borderRadius: 3 }]
       },
       options: finalOpts,
@@ -2487,10 +2497,13 @@ function renderProduk(data) {
   toggleCard('cardProdukSeries', hasFilter(state.series));
   toggleCard('cardProdukTier',   hasFilter(state.tier));
 
-  if (!hasFilter(state.gender)) renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12);
-  if (!hasFilter(state.series)) renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10);
-  if (!hasFilter(state.tier))   renderChart('chartProdukTier',   data.byTier   || [], barOpts, 'bar', 10);
-  renderChart('chartProdukTipe', data.byTipe || [], pieOpts, 'doughnut', 10);
+  // Reference lists buat canonical color mapping yg stable antar filter/area.
+  // Per Tipe ga ada di referenceOptions → pakai fixed list (cuma 2: Fashion/Jepit).
+  const ref = state.referenceOptions || {};
+  if (!hasFilter(state.gender)) renderChart('chartProdukGender', data.byGender || [], pieOpts, 'doughnut', 12, null, ref.genders);
+  if (!hasFilter(state.series)) renderChart('chartProdukSeries', data.bySeries || [], barOpts, 'bar', 10, null, ref.series);
+  if (!hasFilter(state.tier))   renderChart('chartProdukTier',   data.byTier   || [], barOpts, 'bar', 10, null, ref.tiers);
+  renderChart('chartProdukTipe', data.byTipe || [], pieOpts, 'doughnut', 10, null, ['Fashion','Jepit']);
   // Size: single color, more rows, ordered. Force every size label to render (autoSkip:false)
   // and grow the chart box vertically so labels don't overlap (~18px per bar, min 320px).
   const sizeCount = Math.min((data.bySize || []).length, 30);

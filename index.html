@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.37';
+const APP_VERSION = 'v2.38';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2549,16 +2549,27 @@ async function loadKontribusiPerArea() {
 async function _doKontribusi() {
   const wrap = document.getElementById('produkKontribusiContent');
   if (!wrap) return;
+  // Hanya valid untuk channel retail/event (true geographic area).
+  // Channel consig/wholesale/online "area" field-nya = partner/marketplace name (AEON, Shopee, dll),
+  // bukan area geografis — skip biar ga bingung.
+  if (state.channel !== 'retail' && state.channel !== 'event') {
+    wrap.innerHTML = '<div class="muted" style="font-size:11px;">Kontribusi per Area cuma tersedia untuk channel <strong>Retail</strong> / <strong>Event</strong>.</div>';
+    return;
+  }
   // Wait for areas ref to load — retry up to 5x dgn delay (2.5s max)
-  let areas = (state.referenceOptions && state.referenceOptions.areas) || [];
+  let areasRaw = (state.referenceOptions && state.referenceOptions.areas) || [];
   let tries = 0;
-  while (!areas.length && tries < 5) {
+  while (!areasRaw.length && tries < 5) {
     await new Promise(r => setTimeout(r, 500));
-    areas = (state.referenceOptions && state.referenceOptions.areas) || [];
+    areasRaw = (state.referenceOptions && state.referenceOptions.areas) || [];
     tries++;
   }
+  // Filter ke retail-style area aja: Bali X, Batam, Jakarta, Jatim, Lombok, Sulawesi, Sumatra.
+  // Skip partner names (AEON, Bintang, Padma Bali, dll) yang muncul kalau ref include non-retail areas.
+  const RETAIL_AREA_RX = /^(Bali\s*\d|Batam|Jakarta|Jatim|Lombok|Sulawesi|Sumatra)$/i;
+  const areas = areasRaw.filter(a => RETAIL_AREA_RX.test(String(a).trim()));
   if (!areas.length) {
-    wrap.innerHTML = '<div class="muted" style="font-size:11px;">Belum ada data area.</div>';
+    wrap.innerHTML = '<div class="muted" style="font-size:11px;">Belum ada data area retail.</div>';
     return;
   }
   // Counter live so user lihat progress (bukan keliatan hang)

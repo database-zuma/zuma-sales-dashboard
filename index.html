@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.34';
+const APP_VERSION = 'v2.35';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2562,14 +2562,14 @@ async function _doKontribusi() {
   renderLoading();
 
   try {
-    // Pakai loadChannel (lsGet cache) + mutate state.area per iteration.
-    // QS built sync di loadChannel → captures iter's state.area sebelum await.
-    // Skip "group" param supaya prefetch ga ke-abort sama call dari renderProduk.
+    // Unique group per area — wajib, kalau skip group fallback ke 'dashboard'
+    // yang bikin tiap fetch nge-abort fetch sebelumnya (cuma 1 yg lolos).
+    // Re-entry guard di luar udah nge-handle double-call dari prefetch + klik tab.
     const savedArea = state.area;
     const fetchPromises = [];
     for (const area of areas) {
       state.area = [area];
-      const p = loadChannel(state.channel, state.from, state.to, {})  // no group → no abort
+      const p = loadChannel(state.channel, state.from, state.to, { group: 'kontrib-' + area })
         .then(d => { done++; renderLoading(); return { area, data: d }; })
         .catch(() => { done++; renderLoading(); return { area, data: null }; });
       fetchPromises.push(p);

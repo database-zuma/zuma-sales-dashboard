@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.33';
+const APP_VERSION = 'v2.34';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2536,7 +2536,17 @@ function renderProduk(data) {
 
 // Kontribusi per Area: matrix gender × area & tipe × area dengan % share.
 // Lazy load karena fetch 9 area paralel — opt-in via tombol.
+let _kontribInFlight = null;
 async function loadKontribusiPerArea() {
+  // Re-entry guard — prefetch + klik tab dua-duanya panggil ini. Tanpa guard,
+  // dua eksekusi paralel duplikatin 9 fetches + restart progress counter.
+  if (_kontribInFlight) return _kontribInFlight;
+  _kontribInFlight = (async () => {
+    try { await _doKontribusi(); } finally { _kontribInFlight = null; }
+  })();
+  return _kontribInFlight;
+}
+async function _doKontribusi() {
   const wrap = document.getElementById('produkKontribusiContent');
   if (!wrap) return;
   const areas = (state.referenceOptions && state.referenceOptions.areas) || [];

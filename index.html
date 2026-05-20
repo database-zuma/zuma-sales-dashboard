@@ -901,9 +901,9 @@ table.data tfoot td {
     <div id="produkKontribusiWrap" style="margin-top:14px;">
       <div class="card">
         <div class="card-header"><div class="card-title">Kontribusi per Area</div>
-          <span class="muted" style="font-size:10px;">% share Revenue di tiap area · klik <button id="btnKontribusiLoad" style="margin-left:8px;padding:3px 10px;border:1px solid #002A3A;background:#002A3A;color:#fff;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;">Load</button> buat fetch (9 area parallel)</span>
+          <span class="muted" style="font-size:10px;">% share Revenue per kategori dalam tiap area</span>
         </div>
-        <div class="card-body" id="produkKontribusiContent"><div class="muted" style="font-size:11px;">Klik tombol Load di header.</div></div>
+        <div class="card-body" id="produkKontribusiContent"></div>
       </div>
     </div>
   </section>
@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.26';
+const APP_VERSION = 'v2.27';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2529,26 +2529,21 @@ function renderProduk(data) {
   const sortedSize = (data.bySize || []).slice().sort((a,b) => (b.pairs||0) - (a.pairs||0));
   renderChart('chartProdukSize', sortedSize, sizeOpts, 'bar', 30, '#00E273');
 
-  // Kontribusi per Area — wire load button (lazy fetch, opt-in karena 9 API calls).
-  // Reset content tiap renderProduk (state.channel / filter atas mungkin berubah).
-  const kontribContent = document.getElementById('produkKontribusiContent');
-  if (kontribContent) kontribContent.innerHTML = '<div class="muted" style="font-size:11px;">Klik tombol Load di header.</div>';
-  const kontribBtn = document.getElementById('btnKontribusiLoad');
-  if (kontribBtn) kontribBtn.onclick = () => loadKontribusiPerArea();
+  // Kontribusi per Area — auto-load. Fetch 9 area paralel; loadChannel cached
+  // jadi subsequent renderProduk instant. setTimeout(0) supaya DOM attach dulu.
+  setTimeout(() => { try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib', e); } }, 0);
 }
 
 // Kontribusi per Area: matrix gender × area & tipe × area dengan % share.
 // Lazy load karena fetch 9 area paralel — opt-in via tombol.
 async function loadKontribusiPerArea() {
   const wrap = document.getElementById('produkKontribusiContent');
-  const btn = document.getElementById('btnKontribusiLoad');
   if (!wrap) return;
   const areas = (state.referenceOptions && state.referenceOptions.areas) || [];
   if (!areas.length) {
-    wrap.innerHTML = '<div class="alert-error">Daftar area kosong. Pilih channel + periode dulu.</div>';
+    wrap.innerHTML = '<div class="muted" style="font-size:11px;">Belum ada data area.</div>';
     return;
   }
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Fetch ' + areas.length + ' area paralel…</div>';
 
   try {
@@ -2643,8 +2638,6 @@ async function loadKontribusiPerArea() {
   } catch (e) {
     console.error('kontribusi', e);
     wrap.innerHTML = `<div class="alert-error">Gagal load: ${escapeHtml(e.message || String(e))}</div>`;
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Load'; }
   }
 }
 

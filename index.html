@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.36';
+const APP_VERSION = 'v2.37';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2549,7 +2549,14 @@ async function loadKontribusiPerArea() {
 async function _doKontribusi() {
   const wrap = document.getElementById('produkKontribusiContent');
   if (!wrap) return;
-  const areas = (state.referenceOptions && state.referenceOptions.areas) || [];
+  // Wait for areas ref to load — retry up to 5x dgn delay (2.5s max)
+  let areas = (state.referenceOptions && state.referenceOptions.areas) || [];
+  let tries = 0;
+  while (!areas.length && tries < 5) {
+    await new Promise(r => setTimeout(r, 500));
+    areas = (state.referenceOptions && state.referenceOptions.areas) || [];
+    tries++;
+  }
   if (!areas.length) {
     wrap.innerHTML = '<div class="muted" style="font-size:11px;">Belum ada data area.</div>';
     return;
@@ -6415,11 +6422,12 @@ function init() {
     if (overlay) overlay.style.display = 'none';
     try { renderExecutive(cachedInitial); renderActiveTab(cachedInitial); populateFilters(cachedInitial); } catch (e) { console.warn('cache paint:', e); }
     // Background refresh — silently update if newer data arrives
-    loadReferenceOptions().catch(e => console.warn('ref bg', e));
+    loadReferenceOptions().then(() => {
+      // Prefetch Kontribusi per Area AFTER reference options ready — areas list
+      // perlu dari state.referenceOptions.areas dulu.
+      try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); }
+    }).catch(e => console.warn('ref bg', e));
     refresh({ reloadData: true }).catch(e => console.warn('refresh bg', e));
-    // Prefetch Kontribusi per Area di background — supaya pas user klik tab Produk
-    // data udah cached + langsung render dari fetchAPI in-mem cache.
-    setTimeout(() => { try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); } }, 800);
     return;
   }
 
@@ -6432,8 +6440,8 @@ function init() {
     clearTimeout(safetyTimer);
     setProg(100, 'Siap ✓');
     setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 300);
-    // Prefetch Kontribusi per Area di background setelah cold load selesai.
-    setTimeout(() => { try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); } }, 500);
+    // Prefetch Kontribusi per Area AFTER refPromise resolved → areas list ready.
+    try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); }
   });
 }
 

@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.30';
+const APP_VERSION = 'v2.31';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -6418,6 +6418,9 @@ function init() {
     // Background refresh — silently update if newer data arrives
     loadReferenceOptions().catch(e => console.warn('ref bg', e));
     refresh({ reloadData: true }).catch(e => console.warn('refresh bg', e));
+    // Prefetch Kontribusi per Area di background — supaya pas user klik tab Produk
+    // data udah cached + langsung render dari fetchAPI in-mem cache.
+    setTimeout(() => { try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); } }, 800);
     return;
   }
 
@@ -6430,6 +6433,8 @@ function init() {
     clearTimeout(safetyTimer);
     setProg(100, 'Siap ✓');
     setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 300);
+    // Prefetch Kontribusi per Area di background setelah cold load selesai.
+    setTimeout(() => { try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); } }, 500);
   });
 }
 

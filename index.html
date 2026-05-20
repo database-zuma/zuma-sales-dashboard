@@ -1103,7 +1103,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.23';
+const APP_VERSION = 'v2.24';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2456,21 +2456,21 @@ function renderProduk(data) {
       }
     };
 
-    // Stable hash on name → consistent color across filters.
-    // Sebelumnya pakai index posisi → kategori shift posisi pas filter ganti =
-    // warna pindah (e.g. FASHION = hijau di Jatim, hitam di Bali).
-    const colorForName = (name) => {
-      const s = String(name || '').toUpperCase().trim();
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-      return palette[Math.abs(h) % palette.length];
-    };
+    // Color stable across filters: assign berdasarkan POSISI ALPHABETICAL nama,
+    // bukan posisi di array slice (yg sorted by revenue, bisa shift per filter).
+    // Display order tetap by revenue (slice array stays as-is).
+    // Contoh: Fashion < Jepit alfabetis → Fashion selalu palette[0]=hijau,
+    // Jepit palette[1]=hitam, di filter apa pun.
+    const sortedNames = [...slice.map(x => x.name)].sort((a, b) =>
+      String(a).toLowerCase().localeCompare(String(b).toLowerCase()));
+    const nameToColor = new Map();
+    sortedNames.forEach((n, i) => nameToColor.set(n, palette[i % palette.length]));
     produkCharts[id] = new Chart(ctx, {
       type,
       data: {
         labels: slice.map(x => x.name),
         datasets: [{ data: slice.map(x => x.pairs),
-          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map(x => colorForName(x.name)),
+          backgroundColor: singleColor ? slice.map(() => singleColor) : slice.map(x => nameToColor.get(x.name) || palette[0]),
           borderColor: '#fff', borderWidth: type === 'doughnut' ? 2 : 0, borderRadius: 3 }]
       },
       options: finalOpts,

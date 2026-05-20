@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.38';
+const APP_VERSION = 'v2.39';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2580,19 +2580,27 @@ async function _doKontribusi() {
   renderLoading();
 
   try {
-    // Unique group per area — wajib, kalau skip group fallback ke 'dashboard'
-    // yang bikin tiap fetch nge-abort fetch sebelumnya (cuma 1 yg lolos).
-    // Re-entry guard di luar udah nge-handle double-call dari prefetch + klik tab.
-    const savedArea = state.area;
-    const fetchPromises = [];
-    for (const area of areas) {
-      state.area = [area];
-      const p = loadChannel(state.channel, state.from, state.to, { group: 'kontrib-' + area })
+    // Build QS langsung per area — JANGAN mutate state.area karena refresh()
+    // yang jalan paralel bisa baca state.area di tengah iteration → state.rawData
+    // jadi area-specific → byChannel di Channel Performance jadi cacat.
+    const fetchPromises = areas.map(area => {
+      const qs = new URLSearchParams();
+      qs.set('channel', state.channel);
+      qs.set('from', state.from);
+      qs.set('to', state.to);
+      qs.set('sku_only', String(!state.skuOnly));
+      qs.append('area', area);
+      // Honor filter atas lain (gender/series/tier/store) kalau ada
+      ['store','gender','series','tier','sku'].forEach(k => {
+        const v = state[k];
+        if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
+        else if (v) qs.append(k, v);
+      });
+      if (state.search) qs.set('search', state.search);
+      return fetchAPI('/api/sales/dashboard?' + qs.toString(), { group: 'kontrib-' + area })
         .then(d => { done++; renderLoading(); return { area, data: d }; })
         .catch(() => { done++; renderLoading(); return { area, data: null }; });
-      fetchPromises.push(p);
-    }
-    state.area = savedArea;
+    });
     const results = await Promise.all(fetchPromises);
 
     // Build matrix

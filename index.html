@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.44';
+const APP_VERSION = 'v2.45';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -5598,18 +5598,25 @@ async function renderTargetQuarterly() {
 // ============ REFUND (lazy fetch) ============
 async function renderRefund() {
   const wrap = document.getElementById('refundContent');
-  // Refund source = core.iseller only (retail POS has well-formed refund flags). Other
-  // channels don't have reliable refund data, so show empty state consistent with how
-  // Hourly/SPG gate on channel.
-  if (state.channel !== 'retail') {
-    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Data refund hanya tersedia untuk channel <strong>Retail</strong>.</div>';
+  // Retail: source = core.iseller (POS refund flags).
+  // Online: source = raw.accurate_sales_return_mbb (Retur Penjualan Accurate).
+  // Other channels: empty state.
+  if (state.channel !== 'retail' && state.channel !== 'online') {
+    wrap.innerHTML = '<div class="empty" style="border:1px dashed var(--border);padding:48px;text-align:center;">Data refund hanya tersedia untuk channel <strong>Retail</strong> atau <strong>Online</strong>.</div>';
     return;
   }
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div>Memuat refund...</div>';
   try {
-    const year = (state.from || '').slice(0,4) || String(new Date().getFullYear());
     const sandalOnly = !state.skuOnly;
-    const data = await fetchAPI(`/api/sales/refunds?year=${year}&channel=retail&sku_only=${sandalOnly}`);
+    const fromQs = state.from ? `&from=${state.from}` : '';
+    const toQs   = state.to   ? `&to=${state.to}`     : '';
+    const data = await fetchAPI(`/api/sales/refunds?channel=${state.channel}&sku_only=${sandalOnly}${fromQs}${toQs}`);
+
+    // === ONLINE branch ===
+    if (state.channel === 'online') {
+      return renderRefundOnline(wrap, data);
+    }
+    // === RETAIL branch (existing) ===
     // Actual shape: {summary:{refund_qty, refund_value},
     //                by_store:[{toko, area, refund_qty, refund_value}],
     //                by_spg:[{spg, toko, refund_qty, refund_value}],
@@ -5686,6 +5693,78 @@ async function renderRefund() {
   } catch (e) {
     wrap.innerHTML = `<div class="alert-error">❌ Gagal memuat /api/sales/refunds: ${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Online refund renderer — Accurate Retur Penjualan MBB
+function renderRefundOnline(wrap, data) {
+  const summary = data.summary || {};
+  const byMkt    = (data.by_marketplace      || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+  const byRate   = (data.by_marketplace_rate || []).slice().sort((a,b) => (b.rate_pct||0) - (a.rate_pct||0));
+  const byArea   = (data.by_area             || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+  const byArt    = (data.by_article          || []).slice().sort((a,b) => (b.refund_value||0) - (a.refund_value||0));
+
+  const mktRows = byMkt.map(r => `<tr>
+    <td class="strong">${escapeHtml(String(r.marketplace || '-'))}</td>
+    <td class="right">${fmtNum(r.refund_qty || 0)}</td>
+    <td class="right strong">${fmtRpShort(r.refund_value || 0)}</td>
+  </tr>`).join('') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">Tidak ada refund.</td></tr>';
+
+  const rateColor = (p) => p >= 7 ? '#dc2626' : p >= 5 ? '#f59e0b' : p >= 3 ? '#0ea5e9' : '#16a34a';
+  const rateRows = byRate.map(r => `<tr>
+    <td class="strong">${escapeHtml(String(r.marketplace || '-'))}</td>
+    <td class="right">${fmtRpShort(r.gross_value || 0)}</td>
+    <td class="right">${fmtRpShort(r.refund_value || 0)}</td>
+    <td class="right strong" style="color:${rateColor(r.rate_pct||0)}">${(r.rate_pct||0).toFixed(2)}%</td>
+  </tr>`).join('') || '<tr><td colspan="4" class="muted" style="padding:24px;text-align:center;">Tidak ada data.</td></tr>';
+
+  const areaRows = byArea.map(r => `<tr>
+    <td class="strong">${escapeHtml(String(r.area || '-'))}</td>
+    <td class="right">${fmtNum(r.refund_qty || 0)}</td>
+    <td class="right strong">${fmtRpShort(r.refund_value || 0)}</td>
+  </tr>`).join('') || '<tr><td colspan="3" class="muted" style="padding:24px;text-align:center;">Tidak ada data.</td></tr>';
+
+  const artRows = byArt.slice(0, 50).map(r => `<tr>
+    <td class="strong">${escapeHtml(String(r.article || '-'))}</td>
+    <td class="muted" style="font-size:10px;">${escapeHtml(String(r.article_name || ''))}</td>
+    <td class="right">${fmtNum(r.refund_qty || 0)}</td>
+    <td class="right strong">${fmtRpShort(r.refund_value || 0)}</td>
+  </tr>`).join('') || '<tr><td colspan="4" class="muted" style="padding:24px;text-align:center;">Tidak ada data.</td></tr>';
+
+  wrap.innerHTML = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);max-width:520px;">
+      <div class="kpi-card kpi-primary"><div class="kpi-label">Refund Value</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtRpShort(summary.refund_value || 0)}</span></span><div class="kpi-sub">${fmtRp(summary.refund_value || 0)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Refund Qty</div><span class="kpi-value-wrap"><span class="kpi-value">${fmtNum(summary.refund_qty || 0)}</span></span><div class="kpi-sub">pairs</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card"><div class="card-header"><div class="card-title">Top Marketplace · Refund</div></div>
+        <div class="table-wrap" style="max-height:340px;overflow:auto;">
+          <table class="data"><thead><tr><th>Marketplace</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+          <tbody>${mktRows}</tbody></table>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">Refund Rate per Marketplace</div><span class="muted" style="font-size:10px;">refund / gross sales</span></div>
+        <div class="table-wrap" style="max-height:340px;overflow:auto;">
+          <table class="data"><thead><tr><th>Marketplace</th><th class="right">Gross</th><th class="right">Refund</th><th class="right">Rate</th></tr></thead>
+          <tbody>${rateRows}</tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card"><div class="card-header"><div class="card-title">Per Area</div></div>
+        <div class="table-wrap" style="max-height:280px;overflow:auto;">
+          <table class="data"><thead><tr><th>Area</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+          <tbody>${areaRows}</tbody></table>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">Top Artikel Refund</div></div>
+        <div class="table-wrap" style="max-height:280px;overflow:auto;">
+          <table class="data"><thead><tr><th>Artikel</th><th>Nama</th><th class="right">Qty</th><th class="right">Value</th></tr></thead>
+          <tbody>${artRows}</tbody></table>
+        </div>
+      </div>
+    </div>`;
 }
 
 // Modal: per-toko refund artikel breakdown

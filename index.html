@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.46';
+const APP_VERSION = 'v2.47';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1221,8 +1221,10 @@ async function loadChannel(channel, from, to, opts = {}) {
   });
   if (state.search) qs.set('search', state.search);
   const cacheKey = qs.toString();
-  if (cache[cacheKey]) return cache[cacheKey];
-  const cached = lsGet(cacheKey);
+  // opts.fresh = true → bypass cache, force network (dipakai background refresh saat
+  // buka web supaya data terbaru langsung masuk tanpa user harus refresh manual).
+  if (!opts.fresh && cache[cacheKey]) return cache[cacheKey];
+  const cached = !opts.fresh && lsGet(cacheKey);
   if (cached) {
     cache[cacheKey] = cached;
     cached._fromCache = true;
@@ -6159,7 +6161,7 @@ function formatProgress(p) {
   return names.map(n => `${n} ${emoji(p[n])}`).join(' · ');
 }
 
-async function refresh({ reloadData = true } = {}) {
+async function refresh({ reloadData = true, fresh = false } = {}) {
   const btn = document.getElementById('btnRefresh');
   // Visual loading indicator only — spin the refresh button icon. No text status flash.
   const progressHandler = () => {};
@@ -6194,7 +6196,7 @@ async function refresh({ reloadData = true } = {}) {
         showStatus(`⏳ Memuat data ${state.channel} (${state.from} → ${state.to})...`, 'loading');
       }, 350) : null;
       const t0 = performance.now();
-      const data = await loadChannel(state.channel, state.from, state.to);
+      const data = await loadChannel(state.channel, state.from, state.to, { fresh });
       if (statusTimer) clearTimeout(statusTimer);
       state.rawData = data;
       populateFilters(data);
@@ -6542,7 +6544,7 @@ function init() {
       // perlu dari state.referenceOptions.areas dulu.
       try { loadKontribusiPerArea(); } catch (e) { console.warn('kontrib pre', e); }
     }).catch(e => console.warn('ref bg', e));
-    refresh({ reloadData: true }).catch(e => console.warn('refresh bg', e));
+    refresh({ reloadData: true, fresh: true }).catch(e => console.warn('refresh bg', e));
     return;
   }
 

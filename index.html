@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.49';
+const APP_VERSION = 'v2.50';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2455,6 +2455,30 @@ async function exportProdukXlsx(data) {
   const monthNumericCols = [0, ...months.map((_,i)=>5+i), 5+months.length];
   const monthDecimalCols = [5 + months.length + 1]; // Avg col (1 desimal)
 
+  // ===== Sheet "Per Size Bulanan" — pairs per kode_besar (size) per bulan =====
+  const sizeMap = new Map(); // kode_besar → {identity, per[]}
+  monthData.forEach((rows, mi) => {
+    rows.forEach(r => {
+      const kk = String(r.kode_kecil || '').toUpperCase();
+      (r.sizes || []).forEach(s => {
+        const kb = String(s.kode_besar || '').toUpperCase();
+        if (!kb) return;
+        let e = sizeMap.get(kb);
+        if (!e) { e = { kb, kk, name: r.product_name||'', gender: r.gender||'', series: r.series||'', tier: r.tier||'', size: s.size||'', per: months.map(()=>0) }; sizeMap.set(kb, e); }
+        e.per[mi] += Number(s.pairs) || 0;
+      });
+    });
+  });
+  const sizeMonthHeaders = ['#','Kode Kecil','Kode Barang','Nama','Gender','Series','Tier','Size',
+    ...months.map(mo => mo.label), 'Total', 'Avg/Bln'];
+  const sizeMonthRows = Array.from(sizeMap.values())
+    .map(e => { const tot = e.per.reduce((s,v)=>s+v,0); return { ...e, tot, avg: tot/nMonths }; })
+    .sort((a,b) => b.tot - a.tot)
+    .map((e, i) => [ i+1, e.kk, e.kb, e.name, e.gender, e.series, e.tier, e.size, ...e.per, e.tot, Math.round(e.avg*10)/10 ]);
+  const szBase = 8; // # + 7 identity cols before months
+  const sizeMonthNumericCols = [0, ...months.map((_,i)=>szBase+i), szBase+months.length];
+  const sizeMonthDecimalCols = [szBase + months.length + 1];
+
   const today = new Date().toISOString().slice(0, 10);
   await exportToXlsx({
     filename: `produk-artikel-${state.channel}-${state.from}-${state.to}.xlsx`,
@@ -2480,6 +2504,14 @@ async function exportProdukXlsx(data) {
         rows: sizeRows,
         columnWidths: [{wch:5},{wch:14},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},{wch:10},{wch:14}],
         numericCols: [0, 8, 9],
+      },
+      {
+        sheetName: 'Per Size Bulanan',
+        headers: sizeMonthHeaders,
+        rows: sizeMonthRows,
+        columnWidths: [{wch:5},{wch:14},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},...months.map(()=>({wch:9})),{wch:10},{wch:10}],
+        numericCols: sizeMonthNumericCols,
+        decimalCols: sizeMonthDecimalCols,
       },
     ],
   });

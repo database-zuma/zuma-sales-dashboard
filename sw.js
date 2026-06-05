@@ -7,7 +7,7 @@
 //
 // IMPORTANT: bump VERSION every release so old caches (especially HTML) get nuked
 // via the activate handler. Match APP_VERSION di index.html biar gampang trace.
-const VERSION = 'v2.49';
+const VERSION = 'v2.50';
 const STATIC_CACHE = `zuma-static-${VERSION}`;
 const API_CACHE    = `zuma-api-${VERSION}`;
 

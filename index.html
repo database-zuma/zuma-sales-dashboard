@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.50';
+const APP_VERSION = 'v2.51';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1589,6 +1589,12 @@ async function exportToXlsx(opts) {
         const addr = XLSX.utils.encode_cell({ r, c });
         const cell = ws[addr];
         if (!cell) continue;
+        // Formula cell: kalau value string diawali '=' → jadikan rumus Excel (cell.f).
+        if (typeof cell.v === 'string' && cell.v.charAt(0) === '=') {
+          cell.f = cell.v.slice(1);
+          cell.t = 'n';
+          delete cell.v;
+        }
         const isNum = numericSet.has(c) || percentSet.has(c) || decimalSet.has(c);
         const cellStyle = {
           alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
@@ -2444,14 +2450,21 @@ async function exportProdukXlsx(data) {
       e.per[mi] += Number(r.pairs) || 0;
     });
   });
+  // Helper kolom Excel (A,B,..,Z,AA,..) — XLSX belum ke-load saat build rows.
+  const colL = (n) => { let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26);} return s; };
   const monthHeaders = ['#','Kode Kecil','Nama','Gender','Series',
     ...months.map(mo => mo.label), 'Total', 'Avg/Bln'];
   const nMonths = months.length || 1;
+  // Total = SUM(bulan), Avg = SUM(bulan)/jumlah bulan. Dikirim sbg FORMULA Excel.
+  const mFirst = colL(5), mLast = colL(5 + nMonths - 1);  // kolom bulan pertama..terakhir
   const monthRows = Array.from(kkMap.values())
-    .map(e => { const tot = e.per.reduce((s,v)=>s+v,0); return { ...e, tot, avg: tot / nMonths }; })
+    .map(e => ({ ...e, tot: e.per.reduce((s,v)=>s+v,0) }))
     .sort((a,b) => b.tot - a.tot)
-    .map((e, i) => [ i+1, e.kk, e.name, e.gender, e.series, ...e.per, e.tot, Math.round(e.avg*10)/10 ]);
-  // numeric cols: # + each month + total + avg
+    .map((e, i) => {
+      const R = i + 2;  // baris Excel (header=1)
+      const rng = `${mFirst}${R}:${mLast}${R}`;
+      return [ i+1, e.kk, e.name, e.gender, e.series, ...e.per, `=SUM(${rng})`, `=SUM(${rng})/${nMonths}` ];
+    });
   const monthNumericCols = [0, ...months.map((_,i)=>5+i), 5+months.length];
   const monthDecimalCols = [5 + months.length + 1]; // Avg col (1 desimal)
 
@@ -2471,11 +2484,16 @@ async function exportProdukXlsx(data) {
   });
   const sizeMonthHeaders = ['#','Kode Kecil','Kode Barang','Nama','Gender','Series','Tier','Size',
     ...months.map(mo => mo.label), 'Total', 'Avg/Bln'];
-  const sizeMonthRows = Array.from(sizeMap.values())
-    .map(e => { const tot = e.per.reduce((s,v)=>s+v,0); return { ...e, tot, avg: tot/nMonths }; })
-    .sort((a,b) => b.tot - a.tot)
-    .map((e, i) => [ i+1, e.kk, e.kb, e.name, e.gender, e.series, e.tier, e.size, ...e.per, e.tot, Math.round(e.avg*10)/10 ]);
   const szBase = 8; // # + 7 identity cols before months
+  const szFirst = colL(szBase), szLast = colL(szBase + nMonths - 1);
+  const sizeMonthRows = Array.from(sizeMap.values())
+    .map(e => ({ ...e, tot: e.per.reduce((s,v)=>s+v,0) }))
+    .sort((a,b) => b.tot - a.tot)
+    .map((e, i) => {
+      const R = i + 2;
+      const rng = `${szFirst}${R}:${szLast}${R}`;
+      return [ i+1, e.kk, e.kb, e.name, e.gender, e.series, e.tier, e.size, ...e.per, `=SUM(${rng})`, `=SUM(${rng})/${nMonths}` ];
+    });
   const sizeMonthNumericCols = [0, ...months.map((_,i)=>szBase+i), szBase+months.length];
   const sizeMonthDecimalCols = [szBase + months.length + 1];
 

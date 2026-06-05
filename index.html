@@ -1112,7 +1112,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.48';
+const APP_VERSION = 'v2.49';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2395,6 +2395,66 @@ async function exportProdukXlsx(data) {
     });
   });
 
+  // ===== Sheet "Per Bulan" — pairs per kode_kecil per bulan + Total + Avg/bln =====
+  // Fetch tiap bulan dlm range (rankByKodeKecil agregat per range, jadi perlu per-bulan).
+  const MONTH_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const pad = (n) => String(n).padStart(2, '0');
+  const sandalOnly = !state.skuOnly;
+  const buildMonthQs = (from, to) => {
+    const qs = new URLSearchParams({ channel: state.channel, from, to, sku_only: String(sandalOnly) });
+    ['area','store','gender','series','tier','sku'].forEach(k => {
+      const v = state[k];
+      if (k === 'area' && Array.isArray(v)) { expandSelectedAreas(v).forEach(x => qs.append('area', x)); return; }
+      if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
+      else if (v) qs.append(k, v);
+    });
+    if (state.search) qs.set('search', state.search);
+    return qs;
+  };
+  // Enumerate months overlapping [state.from, state.to]
+  const sd = new Date(state.from), ed = new Date(state.to);
+  const months = [];
+  let cur = new Date(sd.getFullYear(), sd.getMonth(), 1);
+  while (cur <= ed) {
+    const y = cur.getFullYear(), m = cur.getMonth(); // 0-11
+    const mFrom = `${y}-${pad(m+1)}-01`;
+    const lastDay = new Date(y, m+1, 0).getDate();
+    let mTo = `${y}-${pad(m+1)}-${pad(lastDay)}`;
+    // clamp ke range user
+    if (mFrom < state.from) { /* keep mFrom as start-of-month, fetch full month then; ok */ }
+    if (mTo > state.to) mTo = state.to;
+    const realFrom = mFrom < state.from ? state.from : mFrom;
+    months.push({ label: `${MONTH_ID[m]} ${y}`, from: realFrom, to: mTo });
+    cur = new Date(y, m+1, 1);
+  }
+  // Fetch per bulan (parallel, group unik biar ga saling abort)
+  const monthData = await Promise.all(months.map((mo, i) =>
+    fetchAPI('/api/sales/dashboard?' + buildMonthQs(mo.from, mo.to).toString(), { group: 'prodmonth-' + i })
+      .then(d => (d.rankByKodeKecil || []))
+      .catch(() => [])
+  ));
+  // Build map kode_kecil → {identity, perMonth[i] pairs}
+  const kkMap = new Map();
+  monthData.forEach((rows, mi) => {
+    rows.forEach(r => {
+      const kk = String(r.kode_kecil || '').toUpperCase();
+      if (!kk) return;
+      let e = kkMap.get(kk);
+      if (!e) { e = { kk, name: r.product_name||'', gender: r.gender||'', series: r.series||'', per: months.map(()=>0) }; kkMap.set(kk, e); }
+      e.per[mi] += Number(r.pairs) || 0;
+    });
+  });
+  const monthHeaders = ['#','Kode Kecil','Nama','Gender','Series',
+    ...months.map(mo => mo.label), 'Total', 'Avg/Bln'];
+  const nMonths = months.length || 1;
+  const monthRows = Array.from(kkMap.values())
+    .map(e => { const tot = e.per.reduce((s,v)=>s+v,0); return { ...e, tot, avg: tot / nMonths }; })
+    .sort((a,b) => b.tot - a.tot)
+    .map((e, i) => [ i+1, e.kk, e.name, e.gender, e.series, ...e.per, e.tot, Math.round(e.avg*10)/10 ]);
+  // numeric cols: # + each month + total + avg
+  const monthNumericCols = [0, ...months.map((_,i)=>5+i), 5+months.length];
+  const monthDecimalCols = [5 + months.length + 1]; // Avg col (1 desimal)
+
   const today = new Date().toISOString().slice(0, 10);
   await exportToXlsx({
     filename: `produk-artikel-${state.channel}-${state.from}-${state.to}.xlsx`,
@@ -2405,6 +2465,14 @@ async function exportProdukXlsx(data) {
         rows: summaryRows,
         columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:10},{wch:14}],
         numericCols: [0, 6, 7],
+      },
+      {
+        sheetName: 'Per Bulan',
+        headers: monthHeaders,
+        rows: monthRows,
+        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},...months.map(()=>({wch:10})),{wch:10},{wch:10}],
+        numericCols: monthNumericCols,
+        decimalCols: monthDecimalCols,
       },
       {
         sheetName: 'Per Size',

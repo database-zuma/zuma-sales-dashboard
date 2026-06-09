@@ -757,8 +757,7 @@ table.data tfoot td {
     <button class="tab-btn" data-tab="spg">SPG</button>
     <button class="tab-btn" data-tab="target">Target</button>
     <button class="tab-btn" data-tab="refund">Refund</button>
-    <button class="tab-btn" data-tab="promo">Promo</button>
-    <button class="tab-btn" data-tab="forecast">Forecast</button>
+    <button class="tab-btn" data-tab="forecast" style="display:none;">Forecast</button>
   </nav>
 
   <!-- GLOBAL ERROR -->
@@ -1112,7 +1111,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.52';
+const APP_VERSION = 'v2.53';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {

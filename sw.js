@@ -3,11 +3,14 @@
 //   - HTML                       → stale-while-revalidate (instant + always pull
 //                                  latest in BG → fresh code visible on next visit)
 //   - Static assets (JS/CSS/etc) → cache-first (versioned via CDN URL anyway)
-//   - API (/api/*)               → stale-while-revalidate (instant + auto-update)
+//   - API (/api/*)               → network-first (fallback ke cache cuma saat offline)
+//
+// PENTING: response redirected (302 → login.html saat sesi expired) TIDAK BOLEH
+// di-cache — dulu bisa ke-cache sebagai '/' dan user nyangkut di halaman login.
 //
 // IMPORTANT: bump VERSION every release so old caches (especially HTML) get nuked
 // via the activate handler. Match APP_VERSION di index.html biar gampang trace.
-const VERSION = 'v2.63';
+const VERSION = 'v2.64';
 const STATIC_CACHE = `zuma-static-${VERSION}`;
 const API_CACHE    = `zuma-api-${VERSION}`;
 
@@ -51,7 +54,10 @@ self.addEventListener('fetch', (event) => {
   // karena versioned via CDN URL.
   const isHtml = request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');
   if (isApi) {
-    event.respondWith(staleWhileRevalidate(request, API_CACHE));
+    // Network-first: app sudah punya cache sendiri (in-memory + localStorage TTL 60mnt).
+    // SWR di sini = lapisan cache TANPA TTL yang nutupin 401 sesi-expired dengan data
+    // basi → gejala "harus refresh berkali-kali". Cache SW cuma buat fallback offline.
+    event.respondWith(networkFirst(request, API_CACHE));
   } else if (isHtml) {
     event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
   } else {
@@ -67,10 +73,25 @@ async function cacheFirst(request, cacheName) {
   if (cached) return cached;
   try {
     const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone());
+    if (response.ok && !response.redirected) cache.put(request, response.clone());
     return response;
   } catch (e) {
     // Offline + uncached — let the browser show its native error.
+    throw e;
+  }
+}
+
+// Network-first: selalu coba network; cache hasil OK sebagai cadangan, dan cuma
+// serve dari cache kalau network-nya gagal total (offline). Dipakai untuk /api/.
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request);
+    if (response.ok && !response.redirected) cache.put(request, response.clone());
+    return response;
+  } catch (e) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
     throw e;
   }
 }
@@ -84,7 +105,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request);
 
   const fetchPromise = fetch(request).then((response) => {
-    if (response.ok) {
+    if (response.ok && !response.redirected) {
       cache.put(request, response.clone());
       // Notify dashboard that fresher data is now in the cache.
       // Dashboard listens via navigator.serviceWorker.addEventListener('message').

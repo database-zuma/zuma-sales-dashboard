@@ -1116,7 +1116,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.63';
+const APP_VERSION = 'v2.64';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -1162,6 +1162,16 @@ async function fetchAPI(path, { timeoutMs = 90000, group = null } = {}) {
   const timer = setTimeout(() => ctl.abort(new Error('TIMEOUT after ' + (timeoutMs/1000) + 's')), timeoutMs);
   try {
     const res = await fetch(API_BASE + path, { headers: { 'X-API-Key': API_KEY }, signal: ctl.signal });
+    if (res.status === 401 && !API_BASE) {
+      // Sesi login (cookie zsess, MAX_AGE 1 jam) habis. Tanpa redirect ini user cuma
+      // lihat banner "HTTP 401" / data blank karena SW tetap serve HTML dari cache.
+      // Flag supaya banyak fetch paralel yang 401 barengan cuma redirect sekali.
+      if (!fetchAPI._authRedirecting) {
+        fetchAPI._authRedirecting = true;
+        window.location.href = '/login.html';
+      }
+      throw new Error('Sesi login habis — pindah ke halaman login…');
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
     return res.json();
   } catch (e) {

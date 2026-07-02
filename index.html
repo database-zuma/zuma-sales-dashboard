@@ -26,6 +26,10 @@
     });
     return window._xlsxLoadingPromise;
   };
+  // Warm-load di background pas halaman kebuka → klik export langsung 1x
+  // (kalau lib di-load saat diklik, async-nya bikin browser blok download → butuh 2-3 klik).
+  if (document.readyState === 'complete') window.ensureXlsx();
+  else window.addEventListener('load', function(){ window.ensureXlsx(); });
 </script>
 <script>
 // Fallback ke cdnjs kalau dua di atas gagal — sync load via inline check.
@@ -859,6 +863,7 @@ table.data tfoot td {
         <span class="muted" id="produkTopCount" style="font-size:10px;">—</span>
         <input type="text" id="produkTopSearch" placeholder="Cari kode kecil / nama / gender / series…" style="margin-left:auto;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:11.5px;width:280px;font-family:inherit;" autocomplete="off">
         <button class="btn-ghost" id="btnProdukXlsx" title="Export Excel: summary kode_kecil + breakdown per size">Excel</button>
+        <button class="btn-ghost" id="btnProdukChannels" title="Export Excel: detail per channel (Retail/Online/Wholesale/Consig) — toko/marketplace/pelanggan + area + qty + revenue. Ikut rentang tanggal.">Detail/Channel</button>
         <span class="muted" style="font-size:10px;">klik baris untuk breakdown per size</span>
       </div>
       <div class="table-wrap" style="max-height:560px;overflow:auto;">
@@ -1076,9 +1081,9 @@ table.data tfoot td {
 // use a relative URL — same origin skips the CORS preflight roundtrip and
 // reuses the existing HTTP/2 connection. Cross-origin (GitHub Pages) still
 // works with the absolute proxy URL.
-const API_BASE = (typeof location !== 'undefined' && /(?:^|\.)zuma-api-proxy\.vercel\.app$/.test(location.host))
+const API_BASE = (typeof location !== 'undefined' && /(?:^|\.)(?:zuma-api-proxy\.vercel\.app|dashboard\.zuma\.id|srv1346756\.hstgr\.cloud)$/.test(location.host))
   ? ''
-  : 'https://zuma-api-proxy.vercel.app';
+  : 'https://srv1346756.hstgr.cloud';
 const API_KEY = '97d25067-a2ca-44ba-ac5b-61539b627271';
 
 // ============ STATE ============
@@ -1111,7 +1116,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.53';
+const APP_VERSION = 'v2.63';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2324,7 +2329,24 @@ function renderProdukTopTable(data) {
   produkState._lastData = data;
   if (!produkState._searchWired) {
     const xlsxBtn = document.getElementById('btnProdukXlsx');
-    if (xlsxBtn) xlsxBtn.onclick = () => exportProdukXlsx(produkState._lastData);
+    if (xlsxBtn) xlsxBtn.onclick = async () => {
+      // 2026-06-24: guard anti dobel-klik + feedback. Tanpa ini, klik ke-2 saat
+      // export masih fetch 6 bulan → abort fetch klik-1 (group sama) → file kosong.
+      if (xlsxBtn.dataset.busy === '1') return;
+      xlsxBtn.dataset.busy = '1'; xlsxBtn.disabled = true;
+      const _orig = xlsxBtn.textContent; xlsxBtn.textContent = '⏳ Membuat…';
+      try { await exportProdukXlsx(produkState._lastData); }
+      catch (e) { console.error('export produk', e); alert('Gagal export Excel: ' + (e && e.message || e)); }
+      finally { xlsxBtn.textContent = _orig; xlsxBtn.disabled = false; xlsxBtn.dataset.busy = '0'; }
+    };
+    const chBtn = document.getElementById('btnProdukChannels');
+    if (chBtn) chBtn.onclick = () => {
+      const sandalOnly = !state.skuOnly;
+      const qs = new URLSearchParams({ from: state.from, to: state.to, sku_only: String(sandalOnly), api_key: API_KEY });
+      const a = document.createElement('a');
+      a.href = API_BASE + '/api/export/produk-channels?' + qs.toString();
+      document.body.appendChild(a); a.click(); a.remove();
+    };
     const inp = document.getElementById('produkTopSearch');
     if (inp) {
       let t = null;
@@ -6711,13 +6733,12 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
             if (typeof cache === 'object' && qs in cache) cache[qs] = null;
             // localStorage cache keyed by same qs string.
             try { localStorage.removeItem('zuma-sales-v5:' + qs); } catch {}
-            // Auto re-fetch + re-render current channel if user is on dashboard endpoint.
-            // (Otherwise stale UI stays visible until user changes filter / refreshes.)
-            if (u.pathname.includes('/api/sales/dashboard') && typeof state !== 'undefined' && state.channel) {
-              if (typeof loadChannel === 'function') {
-                try { loadChannel(state.channel, state.from, state.to); } catch (e) { /* noop */ }
-              }
-            }
+            // DISABLED 2026-06-23: auto re-fetch di sini = INFINITE LOOP.
+            // Tiap fetch /api/sales/dashboard → SW revalidate → kirim 'api-updated'
+            // → handler ini fetch lagi → SW kirim lagi → loop (4900+ req / 4 detik),
+            // bikin delay parah + render ke-supersede terus (data stale/salah gender).
+            // Cache udah di-invalidate di atas; cukup. User interaction / warm cron
+            // berikutnya yang refetch — TANPA loop.
           } catch {}
         });
       })
@@ -6849,9 +6870,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   // Chat endpoint mirrors the API_BASE pattern from the dashboard:
   // relative when served from vercel.app (no CORS preflight),
   // absolute when served from github.io (CORS allowed by /api/chat.js).
-  const CHAT_API = (typeof location !== 'undefined' && /(?:^|\.)zuma-api-proxy\.vercel\.app$/.test(location.host))
+  const CHAT_API = (typeof location !== 'undefined' && /(?:^|\.)(?:zuma-api-proxy\.vercel\.app|dashboard\.zuma\.id|srv1346756\.hstgr\.cloud)$/.test(location.host))
     ? '/api/chat'
-    : 'https://zuma-api-proxy.vercel.app/api/chat';
+    : 'https://srv1346756.hstgr.cloud/api/chat';
 
   const SUGGESTIONS = [
     'Toko mana yang underperform di periode ini?',

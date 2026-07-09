@@ -1117,7 +1117,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.67';
+const APP_VERSION = 'v2.68';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2237,17 +2237,35 @@ function renderOutlet(data) {
 const produkCharts = {};
 const produkState = { expandedKode: new Set(), searchQ: '', _searchWired: false, _lastData: null, sortField: 'pairs', sortDir: 'desc' };
 
-// Stok retail per artikel — kolom "Stok Retail" tab Produk. Fetch sekali per sesi
-// (payload kecil ~6rb key), re-render tabel begitu datanya mendarat.
-let _retailStockMap = null, _retailStockLoading = null;
+// Stok retail per artikel & per size — kolom "Stok Retail" tab Produk.
+// IKUT filter Area + Toko (state.area/state.store) — refetch tiap filter berubah.
+// Date range sengaja TIDAK berlaku: stok = snapshot hari ini, bukan historis.
+const _retailStock = { sig: null, map: null, bySize: null, loading: false };
+function _retailStockSig() {
+  let areas = state.area;
+  if (Array.isArray(areas)) areas = expandSelectedAreas(areas);
+  const qs = new URLSearchParams();
+  (Array.isArray(areas) ? areas : (areas ? [areas] : [])).forEach(a => qs.append('area', a));
+  (Array.isArray(state.store) ? state.store : (state.store ? [state.store] : [])).forEach(s => qs.append('store', s));
+  return qs.toString();
+}
 function _ensureRetailStock() {
-  if (_retailStockMap || _retailStockLoading) return;
-  _retailStockLoading = fetchAPI('/api/stock/retail-by-article')
+  const sig = _retailStockSig();
+  if (_retailStock.sig === sig && (_retailStock.map || _retailStock.loading)) return;
+  _retailStock.sig = sig;
+  _retailStock.map = null; _retailStock.bySize = null; _retailStock.loading = true;
+  fetchAPI('/api/stock/retail-by-article' + (sig ? '?' + sig : ''))
     .then(d => {
-      _retailStockMap = (d && d.map) || {};
+      if (_retailStock.sig !== sig) return; // filter keburu ganti — hasil basi, buang
+      _retailStock.map = (d && d.map) || {};
+      _retailStock.bySize = (d && d.bySize) || {};
+      _retailStock.loading = false;
       if (produkState._lastData) renderProdukTopTable(produkState._lastData);
     })
-    .catch(e => { console.warn('stok retail:', e.message); _retailStockLoading = null; });
+    .catch(e => {
+      console.warn('stok retail:', e.message);
+      if (_retailStock.sig === sig) { _retailStock.loading = false; _retailStock.sig = null; }
+    });
 }
 
 function renderProdukTopTable(data) {
@@ -2259,7 +2277,7 @@ function renderProdukTopTable(data) {
     return hay.indexOf(q) !== -1;
   }) : all.slice();
   // Attach stok retail per artikel (0 kalau ga ada row retail; null = map belum kedownload)
-  rank.forEach(r => { r.stok = _retailStockMap ? (_retailStockMap[String(r.kode_kecil||'').toLowerCase()] || 0) : null; });
+  rank.forEach(r => { r.stok = _retailStock.map ? (_retailStock.map[String(r.kode_kecil||'').toLowerCase()] || 0) : null; });
   // Sort by selected field (clicked header) — pairs / revenue / stok, asc or desc.
   const sf = produkState.sortField || 'pairs';
   const dir = produkState.sortDir === 'asc' ? 1 : -1;
@@ -2322,6 +2340,7 @@ function renderProdukTopTable(data) {
               <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
               <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">%</th>
               <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
+              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;" title="Stok saat ini di toko retail (ikut filter area/toko)">Stok Retail</th>
               <th style="text-align:left;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
             </tr></thead>
             <tbody>
@@ -2329,12 +2348,14 @@ function renderProdukTopTable(data) {
                 const p = Number(s.pairs)||0, rev = Number(s.revenue)||0;
                 const pctTotal = p/totalPairs*100;
                 const barPct = p/maxPairs*100;
+                const stokSz = _retailStock.bySize ? (_retailStock.bySize[String(s.kode_besar||'').toLowerCase()] || 0) : null;
                 return `<tr style="border-bottom:1px solid #e5e7eb;">
                   <td style="padding:4px 6px;font-family:ui-monospace,monospace;font-size:11px;color:#002A3A;">${escapeHtml(s.kode_besar||'-')}</td>
                   <td style="padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums;color:#002A3A;">${escapeHtml(String(s.size||'-'))}</td>
                   <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#002A3A;">${fmtNum(p)}</td>
                   <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#1f2937;font-weight:700;">${pctTotal.toFixed(1)}%</td>
                   <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#00c463;">${fmtRpShort(rev)}</td>
+                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;${stokSz === 0 ? 'color:#dc2626;' : 'color:#002A3A;'}">${stokSz == null ? '…' : fmtNum(stokSz)}</td>
                   <td style="padding:4px 6px;"><div style="height:4px;background:#00E273;width:${barPct}%;border-radius:1px;"></div></td>
                 </tr>`;
               }).join('')}

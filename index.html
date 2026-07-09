@@ -1117,7 +1117,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.68';
+const APP_VERSION = 'v2.69';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2269,7 +2269,13 @@ function _ensureRetailStock() {
 }
 
 function renderProdukTopTable(data) {
-  _ensureRetailStock();
+  // Kolom Stok Retail cuma relevan (dan cuma tampil) saat channel Retail.
+  const showStok = state.channel === 'retail';
+  const stokTh = document.getElementById('produkTopSortStok');
+  if (stokTh) stokTh.style.display = showStok ? '' : 'none';
+  if (showStok) _ensureRetailStock();
+  else if (produkState.sortField === 'stok') { produkState.sortField = 'pairs'; produkState.sortDir = 'desc'; }
+  const colN = showStok ? 5 : 4;
   const all = (data.rankByKodeKecil || []);
   const q = (produkState.searchQ || '').trim().toLowerCase();
   let rank = q ? all.filter(r => {
@@ -2304,7 +2310,7 @@ function renderProdukTopTable(data) {
   const countEl = document.getElementById('produkTopCount');
   if (countEl) countEl.textContent = q ? `${rank.length.toLocaleString('id-ID')} dari ${all.length.toLocaleString('id-ID')} artikel` : `${all.length.toLocaleString('id-ID')} artikel`;
   if (!rank.length) {
-    body.innerHTML = `<tr><td colspan="5" class="empty" style="border:none;padding:28px;">${q ? 'Tidak ada artikel yang cocok dengan pencarian.' : '—'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${colN}" class="empty" style="border:none;padding:28px;">${q ? 'Tidak ada artikel yang cocok dengan pencarian.' : '—'}</td></tr>`;
     return;
   }
   const rows = [];
@@ -2323,14 +2329,14 @@ function renderProdukTopTable(data) {
       </td>
       <td class="right">${fmtNum(r.pairs)}</td>
       <td class="right strong">${fmtRpShort(r.revenue)}</td>
-      <td class="right" style="font-variant-numeric:tabular-nums;${r.stok === 0 ? 'color:#dc2626;' : ''}">${r.stok == null ? '…' : fmtNum(r.stok)}</td>
+      ${showStok ? `<td class="right" style="font-variant-numeric:tabular-nums;${r.stok === 0 ? 'color:#dc2626;' : ''}">${r.stok == null ? '…' : fmtNum(r.stok)}</td>` : ''}
     </tr>`);
     if (isExpanded) {
       // Sort by pairs DESC (qty tertinggi di atas), bukan revenue
       const sizes = (r.sizes || []).slice().sort((a,b) => (b.pairs||0) - (a.pairs||0));
       const totalPairs = sizes.reduce((s,x) => s + (Number(x.pairs)||0), 0) || 1;
       const maxPairs = sizes.reduce((m,s) => Math.max(m, s.pairs||0), 0) || 1;
-      rows.push(`<tr class="produk-detail-row"><td colspan="5" style="padding:0;background:#f6f7f9;color:#002A3A;">
+      rows.push(`<tr class="produk-detail-row"><td colspan="${colN}" style="padding:0;background:#f6f7f9;color:#002A3A;">
         <div style="padding:8px 14px 10px 44px;">
           <div style="display:inline-block;font-size:10px;font-weight:700;color:#002A3A;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;padding:3px 0;">Breakdown per Kode Barang (${sizes.length} size)</div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;color:#002A3A;background:#fff;">
@@ -2340,7 +2346,7 @@ function renderProdukTopTable(data) {
               <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Pairs</th>
               <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">%</th>
               <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">Revenue</th>
-              <th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;" title="Stok saat ini di toko retail (ikut filter area/toko)">Stok Retail</th>
+              ${showStok ? '<th style="text-align:right;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;" title="Stok saat ini di toko retail (ikut filter area/toko)">Stok Retail</th>' : ''}
               <th style="text-align:left;padding:5px 6px;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;width:80px;">Share</th>
             </tr></thead>
             <tbody>
@@ -2355,7 +2361,7 @@ function renderProdukTopTable(data) {
                   <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#002A3A;">${fmtNum(p)}</td>
                   <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:#1f2937;font-weight:700;">${pctTotal.toFixed(1)}%</td>
                   <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#00c463;">${fmtRpShort(rev)}</td>
-                  <td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;${stokSz === 0 ? 'color:#dc2626;' : 'color:#002A3A;'}">${stokSz == null ? '…' : fmtNum(stokSz)}</td>
+                  ${showStok ? `<td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;${stokSz === 0 ? 'color:#dc2626;' : 'color:#002A3A;'}">${stokSz == null ? '…' : fmtNum(stokSz)}</td>` : ''}
                   <td style="padding:4px 6px;"><div style="height:4px;background:#00E273;width:${barPct}%;border-radius:1px;"></div></td>
                 </tr>`;
               }).join('')}

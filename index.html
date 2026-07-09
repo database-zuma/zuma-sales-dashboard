@@ -873,8 +873,9 @@ table.data tfoot td {
             <th>Artikel · Kode Kecil</th>
             <th class="right" id="produkTopSortPairs" data-sort="pairs" style="cursor:pointer;user-select:none;" title="Klik untuk sort Pairs">Pairs <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#00E273;">▼</span></span></span></th>
             <th class="right" id="produkTopSortRev" data-sort="revenue" style="cursor:pointer;user-select:none;" title="Klik untuk sort Revenue">Revenue <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#cbd5e1;">▼</span></span></span></th>
+            <th class="right" id="produkTopSortStok" data-sort="stok" style="cursor:pointer;user-select:none;" title="Stok saat ini di toko RETAIL saja (tanpa gudang/consignment). Klik untuk sort.">Stok Retail <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#cbd5e1;">▼</span></span></span></th>
           </tr></thead>
-          <tbody id="produkTopBody"><tr><td colspan="4" class="loading">—</td></tr></tbody>
+          <tbody id="produkTopBody"><tr><td colspan="5" class="loading">—</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1116,7 +1117,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.66';
+const APP_VERSION = 'v2.67';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2236,14 +2237,30 @@ function renderOutlet(data) {
 const produkCharts = {};
 const produkState = { expandedKode: new Set(), searchQ: '', _searchWired: false, _lastData: null, sortField: 'pairs', sortDir: 'desc' };
 
+// Stok retail per artikel — kolom "Stok Retail" tab Produk. Fetch sekali per sesi
+// (payload kecil ~6rb key), re-render tabel begitu datanya mendarat.
+let _retailStockMap = null, _retailStockLoading = null;
+function _ensureRetailStock() {
+  if (_retailStockMap || _retailStockLoading) return;
+  _retailStockLoading = fetchAPI('/api/stock/retail-by-article')
+    .then(d => {
+      _retailStockMap = (d && d.map) || {};
+      if (produkState._lastData) renderProdukTopTable(produkState._lastData);
+    })
+    .catch(e => { console.warn('stok retail:', e.message); _retailStockLoading = null; });
+}
+
 function renderProdukTopTable(data) {
+  _ensureRetailStock();
   const all = (data.rankByKodeKecil || []);
   const q = (produkState.searchQ || '').trim().toLowerCase();
   let rank = q ? all.filter(r => {
     const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'')).toLowerCase();
     return hay.indexOf(q) !== -1;
   }) : all.slice();
-  // Sort by selected field (clicked header) — pairs or revenue, asc or desc.
+  // Attach stok retail per artikel (0 kalau ga ada row retail; null = map belum kedownload)
+  rank.forEach(r => { r.stok = _retailStockMap ? (_retailStockMap[String(r.kode_kecil||'').toLowerCase()] || 0) : null; });
+  // Sort by selected field (clicked header) — pairs / revenue / stok, asc or desc.
   const sf = produkState.sortField || 'pairs';
   const dir = produkState.sortDir === 'asc' ? 1 : -1;
   rank.sort((a, b) => ((Number(a[sf])||0) - (Number(b[sf])||0)) * dir);
@@ -2264,11 +2281,12 @@ function renderProdukTopTable(data) {
   };
   setInd(document.querySelector('#produkTopSortPairs .sort-ind'), 'pairs');
   setInd(document.querySelector('#produkTopSortRev   .sort-ind'), 'revenue');
+  setInd(document.querySelector('#produkTopSortStok  .sort-ind'), 'stok');
   const body = document.getElementById('produkTopBody');
   const countEl = document.getElementById('produkTopCount');
   if (countEl) countEl.textContent = q ? `${rank.length.toLocaleString('id-ID')} dari ${all.length.toLocaleString('id-ID')} artikel` : `${all.length.toLocaleString('id-ID')} artikel`;
   if (!rank.length) {
-    body.innerHTML = `<tr><td colspan="4" class="empty" style="border:none;padding:28px;">${q ? 'Tidak ada artikel yang cocok dengan pencarian.' : '—'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="empty" style="border:none;padding:28px;">${q ? 'Tidak ada artikel yang cocok dengan pencarian.' : '—'}</td></tr>`;
     return;
   }
   const rows = [];
@@ -2287,13 +2305,14 @@ function renderProdukTopTable(data) {
       </td>
       <td class="right">${fmtNum(r.pairs)}</td>
       <td class="right strong">${fmtRpShort(r.revenue)}</td>
+      <td class="right" style="font-variant-numeric:tabular-nums;${r.stok === 0 ? 'color:#dc2626;' : ''}">${r.stok == null ? '…' : fmtNum(r.stok)}</td>
     </tr>`);
     if (isExpanded) {
       // Sort by pairs DESC (qty tertinggi di atas), bukan revenue
       const sizes = (r.sizes || []).slice().sort((a,b) => (b.pairs||0) - (a.pairs||0));
       const totalPairs = sizes.reduce((s,x) => s + (Number(x.pairs)||0), 0) || 1;
       const maxPairs = sizes.reduce((m,s) => Math.max(m, s.pairs||0), 0) || 1;
-      rows.push(`<tr class="produk-detail-row"><td colspan="4" style="padding:0;background:#f6f7f9;color:#002A3A;">
+      rows.push(`<tr class="produk-detail-row"><td colspan="5" style="padding:0;background:#f6f7f9;color:#002A3A;">
         <div style="padding:8px 14px 10px 44px;">
           <div style="display:inline-block;font-size:10px;font-weight:700;color:#002A3A;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;padding:3px 0;">Breakdown per Kode Barang (${sizes.length} size)</div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;color:#002A3A;background:#fff;">

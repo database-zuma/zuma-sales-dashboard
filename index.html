@@ -1119,7 +1119,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.72';
+const APP_VERSION = 'v2.73';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2436,68 +2436,49 @@ function renderProdukTopTable(data) {
 
 async function exportProdukXlsx(data) {
   if (!data) { alert('Data belum siap.'); return; }
-  // Stok Retail cuma masuk export saat channel Retail (match kolom tabel di layar).
-  // Tunggu map stok siap dulu biar file ga keburu kebentuk dengan kolom kosong.
+  // Kolom Stok Retail di sheet By Kode Kecil/Barang cuma saat channel Retail
+  // (match tabel layar); sheet Per Channel selalu isi stok di baris Retail.
+  // Map stok ikut filter area/toko (sig-based) — tunggu siap dulu.
   const showStok = state.channel === 'retail';
-  if (showStok) {
-    _ensureRetailStock();
-    if (!_retailStock.map && _retailStock.promise) { try { await _retailStock.promise; } catch (e) {} }
-  }
-  const stokArt  = (kk) => (showStok && _retailStock.map) ? (_retailStock.map[String(kk||'').toLowerCase()] || 0) : null;
-  const stokSize = (kb) => (showStok && _retailStock.bySize) ? (_retailStock.bySize[String(kb||'').toLowerCase()] || 0) : null;
-  const all = (data.rankByKodeKecil || []);
+  _ensureRetailStock();
+  if (!_retailStock.map && _retailStock.promise) { try { await _retailStock.promise; } catch (e) {} }
+  const stokArt  = (kk) => _retailStock.map    ? (_retailStock.map[String(kk||'').toLowerCase()] || 0)    : '';
+  const stokSize = (kb) => _retailStock.bySize ? (_retailStock.bySize[String(kb||'').toLowerCase()] || 0) : '';
   const q = (produkState.searchQ || '').trim().toLowerCase();
-  let rank = q ? all.filter(r => {
+  const matchQ = (r) => {
+    if (!q) return true;
     const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'') + '|tier ' + (r.tier||'')).toLowerCase();
     return hay.indexOf(q) !== -1;
-  }) : all.slice();
-  // Sort sesuai sort state aktif
-  const sf = produkState.sortField || 'pairs';
-  const dir = produkState.sortDir === 'asc' ? 1 : -1;
-  rank.sort((a, b) => ((Number(a[sf])||0) - (Number(b[sf])||0)) * dir);
+  };
 
-  // Sheet 1: Summary per kode_kecil
-  const summaryHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Pairs', 'Revenue'];
-  if (showStok) summaryHeaders.push('Stok Retail');
-  const summaryRows = rank.map((r, i) => {
-    const row = [
-      i + 1,
-      String(r.kode_kecil || '').toUpperCase(),
-      String(r.product_name || ''),
-      String(r.gender || ''),
-      String(r.series || ''),
-      String(r.tier || ''),
-      Number(r.pairs) || 0,
-      Number(r.revenue) || 0,
-    ];
-    if (showStok) row.push(stokArt(r.kode_kecil) ?? '');
-    return row;
-  });
-
-  // Sheet 2: Per Size detail (flattened)
-  const sizeHeaders = ['#', 'Kode Kecil', 'Kode Barang', 'Nama', 'Gender', 'Series', 'Tier', 'Size', 'Pairs', 'Revenue'];
-  if (showStok) sizeHeaders.push('Stok Retail');
-  const sizeRows = [];
-  let idx = 1;
-  rank.forEach(r => {
-    const sizes = (r.sizes || []).slice().sort((a, b) => (b.pairs || 0) - (a.pairs || 0));
-    sizes.forEach(s => {
-      const row = [
-        idx++,
-        String(r.kode_kecil || '').toUpperCase(),
-        String(s.kode_besar || ''),
-        String(r.product_name || ''),
-        String(r.gender || ''),
-        String(r.series || ''),
-        String(r.tier || ''),
-        String(s.size || ''),
-        Number(s.pairs) || 0,
-        Number(s.revenue) || 0,
-      ];
-      if (showStok) row.push(stokSize(s.kode_besar) ?? '');
-      sizeRows.push(row);
+  // ===== Sheet "Per Channel" — artikel × channel, ikut SEMUA filter kecuali channel =====
+  const CH_LIST = [['retail','Retail'],['online','Online'],['wholesale','Wholesale'],['consig','Consignment']];
+  const chPayloads = await Promise.all(CH_LIST.map(([ch]) =>
+    loadChannel(ch, state.from, state.to, { group: 'export-ch-' + ch }).catch(() => null)));
+  const chArtTotals = {};
+  const chRaw = [];
+  CH_LIST.forEach(([ch, label], ci) => {
+    (((chPayloads[ci]) || {}).rankByKodeKecil || []).forEach(r => {
+      const kk = String(r.kode_kecil || '');
+      if (!kk || !matchQ(r)) return;
+      chArtTotals[kk] = (chArtTotals[kk] || 0) + (Number(r.pairs) || 0);
+      chRaw.push({ kk, ch, ci, label, r });
     });
   });
+  chRaw.sort((a, b) => (chArtTotals[b.kk] - chArtTotals[a.kk]) || a.kk.localeCompare(b.kk) || (a.ci - b.ci));
+  const chHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Channel', 'Pairs', 'Revenue', 'Stok Retail'];
+  const chRows = chRaw.map((x, i) => [
+    i + 1,
+    x.kk.toUpperCase(),
+    String(x.r.product_name || ''),
+    String(x.r.gender || ''),
+    String(x.r.series || ''),
+    String(x.r.tier || ''),
+    x.label,
+    Number(x.r.pairs) || 0,
+    Number(x.r.revenue) || 0,
+    x.ch === 'retail' ? stokArt(x.kk) : '',
+  ]);
 
   // ===== Sheet "Per Bulan" — pairs per kode_kecil per bulan + Total + Avg/bln =====
   // Fetch tiap bulan dlm range (rankByKodeKecil agregat per range, jadi perlu per-bulan).
@@ -2542,9 +2523,9 @@ async function exportProdukXlsx(data) {
   monthData.forEach((rows, mi) => {
     rows.forEach(r => {
       const kk = String(r.kode_kecil || '').toUpperCase();
-      if (!kk) return;
+      if (!kk || !matchQ(r)) return;
       let e = kkMap.get(kk);
-      if (!e) { e = { kk, name: r.product_name||'', gender: r.gender||'', series: r.series||'', per: months.map(()=>0), rev: months.map(()=>0) }; kkMap.set(kk, e); }
+      if (!e) { e = { kk, name: r.product_name||'', gender: r.gender||'', series: r.series||'', tier: r.tier||'', per: months.map(()=>0), rev: months.map(()=>0) }; kkMap.set(kk, e); }
       e.per[mi] += Number(r.pairs) || 0;
       e.rev[mi] += Number(r.revenue) || 0;
     });
@@ -2553,12 +2534,13 @@ async function exportProdukXlsx(data) {
   const colL = (n) => { let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26);} return s; };
   const nMonths = months.length || 1;
   // ===== Sheet "By Kode Kecil" — Qty/bln + Total+Avg Qty, lalu Rev/bln + Total+Avg Rev =====
-  // Layout kolom: [5 identity] [Qty bln..] [Total Qty][Avg Qty] [Rev bln..] [Total Rev][Avg Rev]
-  const kkQty0 = 5, kkQtyN = kkQty0 + nMonths - 1;        // kolom Qty bulan
+  // Layout kolom: [6 identity (+Tier)] [Qty bln..] [Total Qty][Avg Qty] [Rev bln..] [Total Rev][Avg Rev] [Stok Retail?]
+  const kkQty0 = 6, kkQtyN = kkQty0 + nMonths - 1;        // kolom Qty bulan
   const kkRev0 = kkQty0 + nMonths + 2, kkRevN = kkRev0 + nMonths - 1;  // kolom Rev bulan
-  const monthHeaders = ['#','Kode Kecil','Nama','Gender','Series',
+  const monthHeaders = ['#','Kode Kecil','Nama','Gender','Series','Tier',
     ...months.map(mo => mo.label + ' Qty'), 'Total Qty', 'Avg Qty/Bln',
     ...months.map(mo => mo.label + ' Rev'), 'Total Rev', 'Avg Rev/Bln'];
+  if (showStok) monthHeaders.push('Stok Retail');
   const monthRows = Array.from(kkMap.values())
     .map(e => ({ ...e, tot: e.per.reduce((s,v)=>s+v,0) }))
     .sort((a,b) => b.tot - a.tot)
@@ -2566,13 +2548,16 @@ async function exportProdukXlsx(data) {
       const R = i + 2;
       const qr = `${colL(kkQty0)}${R}:${colL(kkQtyN)}${R}`;
       const rr = `${colL(kkRev0)}${R}:${colL(kkRevN)}${R}`;
-      return [ i+1, e.kk, e.name, e.gender, e.series,
+      const row = [ i+1, e.kk, e.name, e.gender, e.series, e.tier,
         ...e.per, `=SUM(${qr})`, `=SUM(${qr})/${nMonths}`,
         ...e.rev, `=SUM(${rr})`, `=SUM(${rr})/${nMonths}` ];
+      if (showStok) row.push(stokArt(e.kk));
+      return row;
     });
   const monthNumericCols = [0,
     ...Array.from({length:nMonths},(_,i)=>kkQty0+i), kkQty0+nMonths,           // Qty bln + Total Qty
     ...Array.from({length:nMonths},(_,i)=>kkRev0+i), kkRev0+nMonths ];         // Rev bln + Total Rev
+  if (showStok) monthNumericCols.push(kkRev0+nMonths+2);                       // Stok Retail
   const monthDecimalCols = [kkQty0+nMonths+1, kkRev0+nMonths+1];               // Avg Qty + Avg Rev
 
   // ===== Sheet "By Kode Barang" — per kode_besar (size), Qty + Rev per bulan =====
@@ -2580,6 +2565,7 @@ async function exportProdukXlsx(data) {
   monthData.forEach((rows, mi) => {
     rows.forEach(r => {
       const kk = String(r.kode_kecil || '').toUpperCase();
+      if (!matchQ(r)) return;
       (r.sizes || []).forEach(s => {
         const kb = String(s.kode_besar || '').toUpperCase();
         if (!kb) return;
@@ -2596,6 +2582,7 @@ async function exportProdukXlsx(data) {
   const sizeMonthHeaders = ['#','Kode Kecil','Kode Barang','Nama','Gender','Series','Tier','Size',
     ...months.map(mo => mo.label + ' Qty'), 'Total Qty', 'Avg Qty/Bln',
     ...months.map(mo => mo.label + ' Rev'), 'Total Rev', 'Avg Rev/Bln'];
+  if (showStok) sizeMonthHeaders.push('Stok Retail');
   const sizeMonthRows = Array.from(sizeMap.values())
     .map(e => ({ ...e, tot: e.per.reduce((s,v)=>s+v,0) }))
     .sort((a,b) => b.tot - a.tot)
@@ -2603,13 +2590,16 @@ async function exportProdukXlsx(data) {
       const R = i + 2;
       const qr = `${colL(szQty0)}${R}:${colL(szQtyN)}${R}`;
       const rr = `${colL(szRev0)}${R}:${colL(szRevN)}${R}`;
-      return [ i+1, e.kk, e.kb, e.name, e.gender, e.series, e.tier, e.size,
+      const row = [ i+1, e.kk, e.kb, e.name, e.gender, e.series, e.tier, e.size,
         ...e.per, `=SUM(${qr})`, `=SUM(${qr})/${nMonths}`,
         ...e.rev, `=SUM(${rr})`, `=SUM(${rr})/${nMonths}` ];
+      if (showStok) row.push(stokSize(e.kb));
+      return row;
     });
   const sizeMonthNumericCols = [0,
     ...Array.from({length:nMonths},(_,i)=>szQty0+i), szQty0+nMonths,
     ...Array.from({length:nMonths},(_,i)=>szRev0+i), szRev0+nMonths ];
+  if (showStok) sizeMonthNumericCols.push(szRev0+nMonths+2);
   const sizeMonthDecimalCols = [szQty0+nMonths+1, szRev0+nMonths+1];
 
   await exportToXlsx({
@@ -2619,9 +2609,10 @@ async function exportProdukXlsx(data) {
         sheetName: 'By Kode Kecil',
         headers: monthHeaders,
         rows: monthRows,
-        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},
+        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},
           ...months.map(()=>({wch:9})),{wch:10},{wch:10},
-          ...months.map(()=>({wch:13})),{wch:14},{wch:14}],
+          ...months.map(()=>({wch:13})),{wch:14},{wch:14},
+          ...(showStok ? [{wch:11}] : [])],
         numericCols: monthNumericCols,
         decimalCols: monthDecimalCols,
       },
@@ -2631,9 +2622,17 @@ async function exportProdukXlsx(data) {
         rows: sizeMonthRows,
         columnWidths: [{wch:5},{wch:14},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},
           ...months.map(()=>({wch:9})),{wch:10},{wch:10},
-          ...months.map(()=>({wch:13})),{wch:14},{wch:14}],
+          ...months.map(()=>({wch:13})),{wch:14},{wch:14},
+          ...(showStok ? [{wch:11}] : [])],
         numericCols: sizeMonthNumericCols,
         decimalCols: sizeMonthDecimalCols,
+      },
+      {
+        sheetName: 'Per Channel',
+        headers: chHeaders,
+        rows: chRows,
+        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:12},{wch:9},{wch:14},{wch:11}],
+        numericCols: [0,7,8,9],
       },
     ],
   });

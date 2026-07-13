@@ -871,11 +871,12 @@ table.data tfoot td {
           <thead><tr>
             <th class="center" style="width:28px;">#</th>
             <th>Artikel · Kode Kecil</th>
+            <th class="center" id="produkTopSortTier" data-sort="tier" style="cursor:pointer;user-select:none;width:52px;" title="Klik untuk sort Tier">Tier <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#cbd5e1;">▼</span></span></span></th>
             <th class="right" id="produkTopSortPairs" data-sort="pairs" style="cursor:pointer;user-select:none;" title="Klik untuk sort Pairs">Pairs <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#00E273;">▼</span></span></span></th>
             <th class="right" id="produkTopSortRev" data-sort="revenue" style="cursor:pointer;user-select:none;" title="Klik untuk sort Revenue">Revenue <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#cbd5e1;">▼</span></span></span></th>
             <th class="right" id="produkTopSortStok" data-sort="stok" style="cursor:pointer;user-select:none;" title="Stok saat ini di toko RETAIL saja (tanpa gudang/consignment). Klik untuk sort.">Stok Retail <span class="sort-ind"><span style="display:inline-flex;flex-direction:column;line-height:0.7;margin-left:4px;vertical-align:middle;font-size:8px;"><span style="color:#cbd5e1;">▲</span><span style="color:#cbd5e1;">▼</span></span></span></th>
           </tr></thead>
-          <tbody id="produkTopBody"><tr><td colspan="5" class="loading">—</td></tr></tbody>
+          <tbody id="produkTopBody"><tr><td colspan="6" class="loading">—</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1117,7 +1118,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.69';
+const APP_VERSION = 'v2.70';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2275,11 +2276,11 @@ function renderProdukTopTable(data) {
   if (stokTh) stokTh.style.display = showStok ? '' : 'none';
   if (showStok) _ensureRetailStock();
   else if (produkState.sortField === 'stok') { produkState.sortField = 'pairs'; produkState.sortDir = 'desc'; }
-  const colN = showStok ? 5 : 4;
+  const colN = showStok ? 6 : 5;   // # + Artikel + Tier + Pairs + Revenue (+ Stok Retail)
   const all = (data.rankByKodeKecil || []);
   const q = (produkState.searchQ || '').trim().toLowerCase();
   let rank = q ? all.filter(r => {
-    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'')).toLowerCase();
+    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'') + '|tier ' + (r.tier||'')).toLowerCase();
     return hay.indexOf(q) !== -1;
   }) : all.slice();
   // Attach stok retail per artikel (0 kalau ga ada row retail; null = map belum kedownload)
@@ -2303,6 +2304,7 @@ function renderProdukTopTable(data) {
         '<span style="color:' + down + ';">▼</span>' +
       '</span>';
   };
+  setInd(document.querySelector('#produkTopSortTier  .sort-ind'), 'tier');
   setInd(document.querySelector('#produkTopSortPairs .sort-ind'), 'pairs');
   setInd(document.querySelector('#produkTopSortRev   .sort-ind'), 'revenue');
   setInd(document.querySelector('#produkTopSortStok  .sort-ind'), 'stok');
@@ -2327,6 +2329,7 @@ function renderProdukTopTable(data) {
         </div>
         <div class="muted" style="font-size:10px;">${escapeHtml(r.product_name||'-')} · ${escapeHtml(r.gender||'-')} · ${escapeHtml(r.series||'-')} · ${r.n_sizes||0} size</div>
       </td>
+      <td class="center" style="font-variant-numeric:tabular-nums;">${escapeHtml(String(r.tier ?? '') || '—')}</td>
       <td class="right">${fmtNum(r.pairs)}</td>
       <td class="right strong">${fmtRpShort(r.revenue)}</td>
       ${showStok ? `<td class="right" style="font-variant-numeric:tabular-nums;${r.stok === 0 ? 'color:#dc2626;' : ''}">${r.stok == null ? '…' : fmtNum(r.stok)}</td>` : ''}

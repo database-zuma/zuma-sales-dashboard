@@ -862,7 +862,7 @@ table.data tfoot td {
         <div class="card-title">Semua Artikel (Kode Kecil)</div>
         <span class="muted" id="produkTopCount" style="font-size:10px;">—</span>
         <input type="text" id="produkTopSearch" placeholder="Cari kode kecil / nama / gender / series…" style="margin-left:auto;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:11.5px;width:280px;font-family:inherit;" autocomplete="off">
-        <button class="btn-ghost" id="btnProdukXlsx" title="Export Excel: summary kode_kecil + breakdown per size">Excel</button>
+        <button class="btn-ghost" id="btnProdukXlsx" title="Export Excel: 4 sheet per channel (Retail/Online/Wholesale/Consig) — kode kecil × toko, Tier, Qty+Rev per bulan, Stok toko. Ikut filter aktif.">Excel</button>
         <!-- Tombol "Detail/Channel" dihapus 2026-07-14 (bingungin, user minta 1 tombol yang ikut filter).
              Backend /api/export/produk-channels TETAP hidup — tinggal balikin tombolnya kalau perlu lagi. -->
         <span class="muted" style="font-size:10px;">klik baris untuk breakdown per size</span>
@@ -1119,7 +1119,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.73';
+const APP_VERSION = 'v2.74';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2435,207 +2435,24 @@ function renderProdukTopTable(data) {
 }
 
 async function exportProdukXlsx(data) {
-  if (!data) { alert('Data belum siap.'); return; }
-  // Kolom Stok Retail di sheet By Kode Kecil/Barang cuma saat channel Retail
-  // (match tabel layar); sheet Per Channel selalu isi stok di baris Retail.
-  // Map stok ikut filter area/toko (sig-based) — tunggu siap dulu.
-  const showStok = state.channel === 'retail';
-  _ensureRetailStock();
-  if (!_retailStock.map && _retailStock.promise) { try { await _retailStock.promise; } catch (e) {} }
-  const stokArt  = (kk) => _retailStock.map    ? (_retailStock.map[String(kk||'').toLowerCase()] || 0)    : '';
-  const stokSize = (kb) => _retailStock.bySize ? (_retailStock.bySize[String(kb||'').toLowerCase()] || 0) : '';
-  const q = (produkState.searchQ || '').trim().toLowerCase();
-  const matchQ = (r) => {
-    if (!q) return true;
-    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'') + '|tier ' + (r.tier||'')).toLowerCase();
-    return hay.indexOf(q) !== -1;
-  };
-
-  // ===== Sheet "Per Channel" — artikel × channel, ikut SEMUA filter kecuali channel =====
-  const CH_LIST = [['retail','Retail'],['online','Online'],['wholesale','Wholesale'],['consig','Consignment']];
-  const chPayloads = await Promise.all(CH_LIST.map(([ch]) =>
-    loadChannel(ch, state.from, state.to, { group: 'export-ch-' + ch }).catch(() => null)));
-  const chArtTotals = {};
-  const chRaw = [];
-  CH_LIST.forEach(([ch, label], ci) => {
-    (((chPayloads[ci]) || {}).rankByKodeKecil || []).forEach(r => {
-      const kk = String(r.kode_kecil || '');
-      if (!kk || !matchQ(r)) return;
-      chArtTotals[kk] = (chArtTotals[kk] || 0) + (Number(r.pairs) || 0);
-      chRaw.push({ kk, ch, ci, label, r });
-    });
-  });
-  chRaw.sort((a, b) => (chArtTotals[b.kk] - chArtTotals[a.kk]) || a.kk.localeCompare(b.kk) || (a.ci - b.ci));
-  const chHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Channel', 'Pairs', 'Revenue', 'Stok Retail'];
-  const chRows = chRaw.map((x, i) => [
-    i + 1,
-    x.kk.toUpperCase(),
-    String(x.r.product_name || ''),
-    String(x.r.gender || ''),
-    String(x.r.series || ''),
-    String(x.r.tier || ''),
-    x.label,
-    Number(x.r.pairs) || 0,
-    Number(x.r.revenue) || 0,
-    x.ch === 'retail' ? stokArt(x.kk) : '',
-  ]);
-
-  // ===== Sheet "Per Bulan" — pairs per kode_kecil per bulan + Total + Avg/bln =====
-  // Fetch tiap bulan dlm range (rankByKodeKecil agregat per range, jadi perlu per-bulan).
-  const MONTH_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const pad = (n) => String(n).padStart(2, '0');
+  // Export server-side (/api/export/produk-channels): 4 sheet per channel
+  // (Retail/Online/Wholesale/Consig), baris = kode kecil × toko, kolom Tier +
+  // Qty/Rev per bulan + Total/Avg + Stok toko saat ini (sheet Retail).
+  // Ikut SEMUA filter aktif (tanggal/area/toko/gender/series/tier/pencarian)
+  // kecuali channel — 4 channel memang dipisah per sheet.
   const sandalOnly = !state.skuOnly;
-  const buildMonthQs = (from, to) => {
-    const qs = new URLSearchParams({ channel: state.channel, from, to, sku_only: String(sandalOnly) });
-    ['area','store','gender','series','tier','sku'].forEach(k => {
-      const v = state[k];
-      if (k === 'area' && Array.isArray(v)) { expandSelectedAreas(v).forEach(x => qs.append('area', x)); return; }
-      if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
-      else if (v) qs.append(k, v);
-    });
-    if (state.search) qs.set('search', state.search);
-    return qs;
-  };
-  // Enumerate months overlapping [state.from, state.to]
-  const sd = new Date(state.from), ed = new Date(state.to);
-  const months = [];
-  let cur = new Date(sd.getFullYear(), sd.getMonth(), 1);
-  while (cur <= ed) {
-    const y = cur.getFullYear(), m = cur.getMonth(); // 0-11
-    const mFrom = `${y}-${pad(m+1)}-01`;
-    const lastDay = new Date(y, m+1, 0).getDate();
-    let mTo = `${y}-${pad(m+1)}-${pad(lastDay)}`;
-    // clamp ke range user
-    if (mFrom < state.from) { /* keep mFrom as start-of-month, fetch full month then; ok */ }
-    if (mTo > state.to) mTo = state.to;
-    const realFrom = mFrom < state.from ? state.from : mFrom;
-    months.push({ label: `${MONTH_ID[m]} ${y}`, from: realFrom, to: mTo });
-    cur = new Date(y, m+1, 1);
-  }
-  // Fetch per bulan (parallel, group unik biar ga saling abort)
-  const monthData = await Promise.all(months.map((mo, i) =>
-    fetchAPI('/api/sales/dashboard?' + buildMonthQs(mo.from, mo.to).toString(), { group: 'prodmonth-' + i })
-      .then(d => (d.rankByKodeKecil || []))
-      .catch(() => [])
-  ));
-  // Build map kode_kecil → {identity, perMonth[i] pairs}
-  const kkMap = new Map();
-  monthData.forEach((rows, mi) => {
-    rows.forEach(r => {
-      const kk = String(r.kode_kecil || '').toUpperCase();
-      if (!kk || !matchQ(r)) return;
-      let e = kkMap.get(kk);
-      if (!e) { e = { kk, name: r.product_name||'', gender: r.gender||'', series: r.series||'', tier: r.tier||'', per: months.map(()=>0), rev: months.map(()=>0) }; kkMap.set(kk, e); }
-      e.per[mi] += Number(r.pairs) || 0;
-      e.rev[mi] += Number(r.revenue) || 0;
-    });
+  const qs = new URLSearchParams({ from: state.from, to: state.to, sku_only: String(sandalOnly), api_key: API_KEY });
+  ['area','store','gender','series','tier','sku'].forEach(k => {
+    let v = state[k];
+    if (k === 'area' && Array.isArray(v)) v = expandSelectedAreas(v);
+    if (Array.isArray(v)) v.forEach(x => qs.append(k, x));
+    else if (v) qs.append(k, v);
   });
-  // Helper kolom Excel (A,B,..,Z,AA,..) — XLSX belum ke-load saat build rows.
-  const colL = (n) => { let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26);} return s; };
-  const nMonths = months.length || 1;
-  // ===== Sheet "By Kode Kecil" — Qty/bln + Total+Avg Qty, lalu Rev/bln + Total+Avg Rev =====
-  // Layout kolom: [6 identity (+Tier)] [Qty bln..] [Total Qty][Avg Qty] [Rev bln..] [Total Rev][Avg Rev] [Stok Retail?]
-  const kkQty0 = 6, kkQtyN = kkQty0 + nMonths - 1;        // kolom Qty bulan
-  const kkRev0 = kkQty0 + nMonths + 2, kkRevN = kkRev0 + nMonths - 1;  // kolom Rev bulan
-  const monthHeaders = ['#','Kode Kecil','Nama','Gender','Series','Tier',
-    ...months.map(mo => mo.label + ' Qty'), 'Total Qty', 'Avg Qty/Bln',
-    ...months.map(mo => mo.label + ' Rev'), 'Total Rev', 'Avg Rev/Bln'];
-  if (showStok) monthHeaders.push('Stok Retail');
-  const monthRows = Array.from(kkMap.values())
-    .map(e => ({ ...e, tot: e.per.reduce((s,v)=>s+v,0) }))
-    .sort((a,b) => b.tot - a.tot)
-    .map((e, i) => {
-      const R = i + 2;
-      const qr = `${colL(kkQty0)}${R}:${colL(kkQtyN)}${R}`;
-      const rr = `${colL(kkRev0)}${R}:${colL(kkRevN)}${R}`;
-      const row = [ i+1, e.kk, e.name, e.gender, e.series, e.tier,
-        ...e.per, `=SUM(${qr})`, `=SUM(${qr})/${nMonths}`,
-        ...e.rev, `=SUM(${rr})`, `=SUM(${rr})/${nMonths}` ];
-      if (showStok) row.push(stokArt(e.kk));
-      return row;
-    });
-  const monthNumericCols = [0,
-    ...Array.from({length:nMonths},(_,i)=>kkQty0+i), kkQty0+nMonths,           // Qty bln + Total Qty
-    ...Array.from({length:nMonths},(_,i)=>kkRev0+i), kkRev0+nMonths ];         // Rev bln + Total Rev
-  if (showStok) monthNumericCols.push(kkRev0+nMonths+2);                       // Stok Retail
-  const monthDecimalCols = [kkQty0+nMonths+1, kkRev0+nMonths+1];               // Avg Qty + Avg Rev
-
-  // ===== Sheet "By Kode Barang" — per kode_besar (size), Qty + Rev per bulan =====
-  const sizeMap = new Map();
-  monthData.forEach((rows, mi) => {
-    rows.forEach(r => {
-      const kk = String(r.kode_kecil || '').toUpperCase();
-      if (!matchQ(r)) return;
-      (r.sizes || []).forEach(s => {
-        const kb = String(s.kode_besar || '').toUpperCase();
-        if (!kb) return;
-        let e = sizeMap.get(kb);
-        if (!e) { e = { kb, kk, name: r.product_name||'', gender: r.gender||'', series: r.series||'', tier: r.tier||'', size: s.size||'', per: months.map(()=>0), rev: months.map(()=>0) }; sizeMap.set(kb, e); }
-        e.per[mi] += Number(s.pairs) || 0;
-        e.rev[mi] += Number(s.revenue) || 0;
-      });
-    });
-  });
-  const szBase = 8; // # + 7 identity cols
-  const szQty0 = szBase, szQtyN = szQty0 + nMonths - 1;
-  const szRev0 = szQty0 + nMonths + 2, szRevN = szRev0 + nMonths - 1;
-  const sizeMonthHeaders = ['#','Kode Kecil','Kode Barang','Nama','Gender','Series','Tier','Size',
-    ...months.map(mo => mo.label + ' Qty'), 'Total Qty', 'Avg Qty/Bln',
-    ...months.map(mo => mo.label + ' Rev'), 'Total Rev', 'Avg Rev/Bln'];
-  if (showStok) sizeMonthHeaders.push('Stok Retail');
-  const sizeMonthRows = Array.from(sizeMap.values())
-    .map(e => ({ ...e, tot: e.per.reduce((s,v)=>s+v,0) }))
-    .sort((a,b) => b.tot - a.tot)
-    .map((e, i) => {
-      const R = i + 2;
-      const qr = `${colL(szQty0)}${R}:${colL(szQtyN)}${R}`;
-      const rr = `${colL(szRev0)}${R}:${colL(szRevN)}${R}`;
-      const row = [ i+1, e.kk, e.kb, e.name, e.gender, e.series, e.tier, e.size,
-        ...e.per, `=SUM(${qr})`, `=SUM(${qr})/${nMonths}`,
-        ...e.rev, `=SUM(${rr})`, `=SUM(${rr})/${nMonths}` ];
-      if (showStok) row.push(stokSize(e.kb));
-      return row;
-    });
-  const sizeMonthNumericCols = [0,
-    ...Array.from({length:nMonths},(_,i)=>szQty0+i), szQty0+nMonths,
-    ...Array.from({length:nMonths},(_,i)=>szRev0+i), szRev0+nMonths ];
-  if (showStok) sizeMonthNumericCols.push(szRev0+nMonths+2);
-  const sizeMonthDecimalCols = [szQty0+nMonths+1, szRev0+nMonths+1];
-
-  await exportToXlsx({
-    filename: `produk-artikel-${state.channel}-${state.from}-${state.to}.xlsx`,
-    sheets: [
-      {
-        sheetName: 'By Kode Kecil',
-        headers: monthHeaders,
-        rows: monthRows,
-        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},
-          ...months.map(()=>({wch:9})),{wch:10},{wch:10},
-          ...months.map(()=>({wch:13})),{wch:14},{wch:14},
-          ...(showStok ? [{wch:11}] : [])],
-        numericCols: monthNumericCols,
-        decimalCols: monthDecimalCols,
-      },
-      {
-        sheetName: 'By Kode Barang',
-        headers: sizeMonthHeaders,
-        rows: sizeMonthRows,
-        columnWidths: [{wch:5},{wch:14},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:8},
-          ...months.map(()=>({wch:9})),{wch:10},{wch:10},
-          ...months.map(()=>({wch:13})),{wch:14},{wch:14},
-          ...(showStok ? [{wch:11}] : [])],
-        numericCols: sizeMonthNumericCols,
-        decimalCols: sizeMonthDecimalCols,
-      },
-      {
-        sheetName: 'Per Channel',
-        headers: chHeaders,
-        rows: chRows,
-        columnWidths: [{wch:5},{wch:14},{wch:34},{wch:10},{wch:18},{wch:6},{wch:12},{wch:9},{wch:14},{wch:11}],
-        numericCols: [0,7,8,9],
-      },
-    ],
-  });
+  const qsearch = (produkState.searchQ || state.search || '').trim();
+  if (qsearch) qs.set('search', qsearch);
+  const a = document.createElement('a');
+  a.href = API_BASE + '/api/export/produk-channels?' + qs.toString();
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 function renderProduk(data) {

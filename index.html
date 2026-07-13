@@ -1118,7 +1118,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.70';
+const APP_VERSION = 'v2.71';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2255,7 +2255,7 @@ function _ensureRetailStock() {
   if (_retailStock.sig === sig && (_retailStock.map || _retailStock.loading)) return;
   _retailStock.sig = sig;
   _retailStock.map = null; _retailStock.bySize = null; _retailStock.loading = true;
-  fetchAPI('/api/stock/retail-by-article' + (sig ? '?' + sig : ''))
+  _retailStock.promise = fetchAPI('/api/stock/retail-by-article' + (sig ? '?' + sig : ''))
     .then(d => {
       if (_retailStock.sig !== sig) return; // filter keburu ganti — hasil basi, buang
       _retailStock.map = (d && d.map) || {};
@@ -2435,10 +2435,19 @@ function renderProdukTopTable(data) {
 
 async function exportProdukXlsx(data) {
   if (!data) { alert('Data belum siap.'); return; }
+  // Stok Retail cuma masuk export saat channel Retail (match kolom tabel di layar).
+  // Tunggu map stok siap dulu biar file ga keburu kebentuk dengan kolom kosong.
+  const showStok = state.channel === 'retail';
+  if (showStok) {
+    _ensureRetailStock();
+    if (!_retailStock.map && _retailStock.promise) { try { await _retailStock.promise; } catch (e) {} }
+  }
+  const stokArt  = (kk) => (showStok && _retailStock.map) ? (_retailStock.map[String(kk||'').toLowerCase()] || 0) : null;
+  const stokSize = (kb) => (showStok && _retailStock.bySize) ? (_retailStock.bySize[String(kb||'').toLowerCase()] || 0) : null;
   const all = (data.rankByKodeKecil || []);
   const q = (produkState.searchQ || '').trim().toLowerCase();
   let rank = q ? all.filter(r => {
-    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'')).toLowerCase();
+    const hay = ((r.kode_kecil||'') + '|' + (r.product_name||'') + '|' + (r.gender||'') + '|' + (r.series||'') + '|tier ' + (r.tier||'')).toLowerCase();
     return hay.indexOf(q) !== -1;
   }) : all.slice();
   // Sort sesuai sort state aktif
@@ -2448,25 +2457,31 @@ async function exportProdukXlsx(data) {
 
   // Sheet 1: Summary per kode_kecil
   const summaryHeaders = ['#', 'Kode Kecil', 'Nama', 'Gender', 'Series', 'Tier', 'Pairs', 'Revenue'];
-  const summaryRows = rank.map((r, i) => [
-    i + 1,
-    String(r.kode_kecil || '').toUpperCase(),
-    String(r.product_name || ''),
-    String(r.gender || ''),
-    String(r.series || ''),
-    String(r.tier || ''),
-    Number(r.pairs) || 0,
-    Number(r.revenue) || 0,
-  ]);
+  if (showStok) summaryHeaders.push('Stok Retail');
+  const summaryRows = rank.map((r, i) => {
+    const row = [
+      i + 1,
+      String(r.kode_kecil || '').toUpperCase(),
+      String(r.product_name || ''),
+      String(r.gender || ''),
+      String(r.series || ''),
+      String(r.tier || ''),
+      Number(r.pairs) || 0,
+      Number(r.revenue) || 0,
+    ];
+    if (showStok) row.push(stokArt(r.kode_kecil) ?? '');
+    return row;
+  });
 
   // Sheet 2: Per Size detail (flattened)
   const sizeHeaders = ['#', 'Kode Kecil', 'Kode Barang', 'Nama', 'Gender', 'Series', 'Tier', 'Size', 'Pairs', 'Revenue'];
+  if (showStok) sizeHeaders.push('Stok Retail');
   const sizeRows = [];
   let idx = 1;
   rank.forEach(r => {
     const sizes = (r.sizes || []).slice().sort((a, b) => (b.pairs || 0) - (a.pairs || 0));
     sizes.forEach(s => {
-      sizeRows.push([
+      const row = [
         idx++,
         String(r.kode_kecil || '').toUpperCase(),
         String(s.kode_besar || ''),
@@ -2477,7 +2492,9 @@ async function exportProdukXlsx(data) {
         String(s.size || ''),
         Number(s.pairs) || 0,
         Number(s.revenue) || 0,
-      ]);
+      ];
+      if (showStok) row.push(stokSize(s.kode_besar) ?? '');
+      sizeRows.push(row);
     });
   });
 

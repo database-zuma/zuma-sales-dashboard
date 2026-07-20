@@ -1119,7 +1119,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_PREFIX = 'zuma-sales-v5:';
 // On each page load, detect an app-version change and nuke all stale payloads
 // so frontend schema changes propagate without the user having to clear manually.
-const APP_VERSION = 'v2.74';
+const APP_VERSION = 'v2.75';
 try {
   const stored = localStorage.getItem('zuma-sales-appver');
   if (stored !== APP_VERSION) {
@@ -2262,11 +2262,19 @@ function _ensureRetailStock() {
       _retailStock.map = (d && d.map) || {};
       _retailStock.bySize = (d && d.bySize) || {};
       _retailStock.loading = false;
+      _retailStock.retries = 0;
       if (produkState._lastData) renderProdukTopTable(produkState._lastData);
     })
     .catch(e => {
       console.warn('stok retail:', e.message);
-      if (_retailStock.sig === sig) { _retailStock.loading = false; _retailStock.sig = null; }
+      if (_retailStock.sig !== sig) return;
+      _retailStock.loading = false; _retailStock.sig = null;
+      // Dulu gagal = kolom nyangkut '…' sampai user interaksi lagi (bolak-balik
+      // tab). Sekarang retry otomatis max 2× jeda 3s.
+      if ((_retailStock.retries || 0) < 2) {
+        _retailStock.retries = (_retailStock.retries || 0) + 1;
+        setTimeout(() => { _ensureRetailStock(); }, 3000);
+      }
     });
 }
 
@@ -6555,6 +6563,10 @@ function init() {
   // di onDateChange.
 
   setupEvents();
+
+  // Prefetch stok retail (kolom Stok Retail tab Produk) dari boot — jangan
+  // nunggu user buka tab Produk di channel retail baru fetch (kolom '…' 5-6s).
+  try { _ensureRetailStock(); } catch (e) { console.warn('stok prefetch:', e); }
 
   const overlay = document.getElementById('api-loading-overlay');
   const bar = document.getElementById('loadingProgressBar');
